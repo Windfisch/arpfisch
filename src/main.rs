@@ -305,7 +305,126 @@ trait UserInterface {
 }
 
 struct LaunchpadX {
+	state: [[LaunchpadInternalColorspec; 9]; 9]
+}
 
+#[derive(Clone,Copy,Debug)]
+enum LaunchpadEvent {
+	Down(u8, u8, f32),
+	Up(u8, u8, f32),
+}
+
+#[derive(Clone,Copy,Debug)]
+enum Color {
+	Color(u16, f32),
+	White(f32)
+}
+
+#[derive(Clone,Copy,Debug)]
+enum LaunchpadColorspec {
+	Off,
+	Solid(Color),
+	Blink(Color),
+	Fade(Color),
+	Alternate(Color, Color)
+}
+
+#[derive(Clone,Copy,Debug,PartialEq,Eq)]
+enum LaunchpadInternalColorspec {
+	Solid(u8),
+	Alternate(u8,u8),
+	Fade(u8)
+}
+
+impl LaunchpadX {
+	pub fn new() -> LaunchpadX {
+		LaunchpadX {
+			state: [[LaunchpadInternalColorspec::Solid(0); 9]; 9]
+		}
+	}
+
+	pub fn handle_midi(&mut self, message: &[u8], mut f: impl FnMut(&mut Self, LaunchpadEvent)) {
+		fn id2coord(id: u8) -> Option<(u8, u8)> {
+			let x = id % 10;
+			let y = id / 10;
+			println!("x,y = {}, {}", x, y);
+
+			if (1..9).contains(&x) && (1..9).contains(&y) {
+				Some((x-1, y-1))
+			}
+			else {
+				None
+			}
+		}
+		use LaunchpadEvent::*;
+		println!("{}", message.len());
+		if message.len() == 3 {
+			println!("{}, {:02x} {:02x} {:02x}", message.len(), message[0], message[1], message[2]);
+			if message[0] == 0x90 && message[2] != 0 {
+				if let Some((x,y)) = id2coord(message[1]) {
+					f(self, Down(x, y, message[2] as f32 / 127.0));
+				}
+			}
+			if message[0] == 0x90 && message[2] == 0 {
+				if let Some((x,y)) = id2coord(message[1]) {
+					f(self, Up(x, y, 64.0));
+				}
+			}
+			if message[0] == 0x80 {
+				if let Some((x,y)) = id2coord(message[1]) {
+					f(self, Up(x, y, message[2] as f32 / 127.0));
+				}
+			}
+		}
+	}
+
+	pub fn set(&mut self, pos: (u8,u8), colorspec: LaunchpadColorspec, mut send: impl FnMut(&[u8])) {
+		fn color(c: Color) -> u8 {
+			let offsets = [
+				0x04, 0x04, 0x04, 0x08, 0x08, 0x08,
+				0x0c, 0x0c, 0x0c, 0x10, 0x10, 0x10,
+				0x14, 0x14, 0x18, 0x18, 0x1c, 0x1c,
+				0x20, 0x20, 0x24, 0x24, 0x28, 0x28,
+				0x2c, 0x2c, 0x2c, 0x30, 0x30, 0x30,
+				0x34, 0x34, 0x34, 0x38, 0x38, 0x38
+			];
+			use crate::Color::*;
+			match c {
+				White(i) => ((i*4.0) as u8).clamp(0,3),
+				Color(hue, i) => offsets[(hue as usize % 360) / 10] + 3 - ((i*4.0) as u8).clamp(0,3)
+			}
+		}
+
+		assert!( (0..9).contains(&pos.0) );
+		assert!( (0..9).contains(&pos.1) );
+		let note = (pos.0 + 1) + 10 * (pos.1 + 1);
+		use LaunchpadColorspec::*;
+		let new_spec = match colorspec {
+			Off => LaunchpadInternalColorspec::Solid(0),
+			Solid(c) => LaunchpadInternalColorspec::Solid(color(c)),
+			Blink(c) => LaunchpadInternalColorspec::Alternate(0,color(c)),
+			Fade(c) => LaunchpadInternalColorspec::Fade(color(c)),
+			Alternate(c1,c2) => LaunchpadInternalColorspec::Alternate(color(c1),color(c2))
+		};
+
+		let field = &mut self.state[pos.0 as usize][pos.1 as usize];
+		println!("field was {:?}, is {:?}", *field, new_spec);
+		if *field != new_spec {
+			*field = new_spec;
+			match new_spec {
+				LaunchpadInternalColorspec::Solid(c) => {
+					send(&[0x90, note, c]);
+				}
+				LaunchpadInternalColorspec::Alternate(c1, c2) => {
+					send(&[0x90, note, c1]);
+					send(&[0x91, note, c2]);
+				}
+				LaunchpadInternalColorspec::Fade(c) => {
+					send(&[0x92, note, c]);
+				}
+			}
+		}
+	}
 }
 
 fn main() {
