@@ -143,6 +143,9 @@ impl TempoDetector {
 struct JackDriver {
 	in_port: Port<MidiIn>,
 	out_port: Port<MidiOut>,
+	ui_in_port: Port<MidiIn>,
+	ui_out_port: Port<MidiOut>,
+	ui: LaunchpadX,
 	ticks_per_step: u32,
 	tick_counter: u32,
 	time: u64,
@@ -159,6 +162,9 @@ impl JackDriver {
 		Ok(JackDriver {
 			in_port: client.register_port(&format!("{}_in", name), MidiIn)?,
 			out_port: client.register_port(&format!("{}_out", name), MidiOut)?,
+			ui_in_port: client.register_port(&format!("{}_launchpad_in", name), MidiIn)?,
+			ui_out_port: client.register_port(&format!("{}_launchpad_out", name), MidiOut)?,
+			ui: LaunchpadX::new(),
 			ticks_per_step: 12,
 			tick_counter: 0,
 			time: 0,
@@ -184,6 +190,28 @@ impl JackDriver {
 	}
 
 	pub fn process(&mut self, scope: &ProcessScope) {
+		let mut ui_writer = self.ui_out_port.writer(scope);
+		for ev in self.ui_in_port.iter(scope) {
+			println!("event!");
+			self.ui.handle_midi(ev.bytes, |ui, event| {
+				use LaunchpadEvent::*;
+				println!("da real event");
+				match event {
+					Down(x, y, intensity) => {
+						ui.set((x,y), LaunchpadColorspec::Solid(Color::Color((intensity*360.0) as u16, 0.7)), |bytes| {
+							println!("write midi of len {}", bytes.len());
+							ui_writer.write(&jack::RawMidi { time: 0, bytes }).ok();
+						});
+					}
+					Up(x, y, _) => {
+						ui.set((x,y), LaunchpadColorspec::Off, |bytes| {
+							ui_writer.write(&jack::RawMidi { time: 0, bytes }).ok();
+						});
+					}
+				}
+			});
+		}
+
 		for event in self.in_port.iter(scope) {
 			let timestamp = self.time + event.time as u64;
 			if event.bytes[0] == 0xFA { // start
