@@ -265,8 +265,8 @@ impl GuiController {
 		use LaunchpadColorspec::*;
 		match self.state {
 			Edit => {
-				set_led((0,8), Off);
-				set_led((1,8), Off);
+				set_led((8,0), Off);
+				set_led((8,1), Off);
 
 				let mut array = [[None; 8]; 8];
 				println!("==============================================");
@@ -326,12 +326,12 @@ impl GuiController {
 				}
 			},
 			Config => {
-				set_led((0,8), Fade(Color::Color(0, 0.74)));
-				set_led((1,8), Off);
+				set_led((8,0), Fade(Color::Color(0, 0.74)));
+				set_led((8,1), Off);
 			},
 			Sliders => {
-				set_led((1,8), Fade(Color::Color(0, 0.74)));
-				set_led((0,8), Off);
+				set_led((8,0), Off);
+				set_led((8,1), Fade(Color::Color(0, 0.74)));
 			}
 		}
 	}
@@ -364,7 +364,7 @@ impl JackDriver {
 			ui_in_port: client.register_port(&format!("{}_launchpad_in", name), MidiIn)?,
 			ui_out_port: client.register_port(&format!("{}_launchpad_out", name), MidiOut)?,
 			ui: LaunchpadX::new(),
-			ticks_per_step: 12,
+			ticks_per_step: 3,
 			tick_counter: 0,
 			time: 0,
 			gui_controller: GuiController::new(),
