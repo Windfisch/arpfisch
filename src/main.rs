@@ -83,7 +83,7 @@ impl RepeatMode {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Entry {
 	note: isize,
 	len_steps: u32,
@@ -105,6 +105,31 @@ impl Entry {
 struct ArpeggioData {
 	pub repeat_mode: RepeatMode,
 	pub pattern: heapless::Vec<heapless::Vec<Entry, U16>, U64>,
+}
+
+impl ArpeggioData {
+	pub fn get_mut(&mut self, pos: usize, note: isize) -> Option<&mut Entry> {
+		self.pattern[pos].iter_mut().find(|e| e.note == note)
+	}
+	pub fn get(&mut self, pos: usize, note: isize) -> Option<&Entry> {
+		self.pattern[pos].iter().find(|e| e.note == note)
+	}
+	pub fn set(&mut self, pos: usize, entry: Entry) -> Result<(), Entry> {
+		if let Some(e) = self.get_mut(pos, entry.note) {
+			*e = entry;
+			Ok(())
+		}
+		else {
+			self.pattern[pos].push(entry)
+		}
+	}
+	pub fn delete(&mut self, pos: usize, note: isize) -> bool {
+		if let Some((i, _)) = self.pattern[pos].iter().find_position(|e| e.note == note) {
+			self.pattern[pos].swap_remove(i);
+			return true;
+		}
+		return false;
+	}
 }
 
 struct Arpeggiator {
@@ -140,6 +165,178 @@ impl TempoDetector {
 	}
 }
 
+
+enum GuiState {
+	Edit,
+	Config,
+	Sliders,
+}
+
+struct GuiController {
+	state: GuiState,
+	first_x: isize,
+	first_y: isize,
+}
+
+impl GuiController {
+	pub fn new() -> GuiController {
+		GuiController {
+			state: GuiState::Edit,
+			first_x: 0,
+			first_y: 0
+		}
+	}
+
+	pub fn handle_input(&mut self, event: LaunchpadEvent, pattern: &mut ArpeggioData) {
+		use LaunchpadEvent::*;
+		use GuiState::*;
+
+		println!("Handle input: {:?}", event);
+
+		match self.state {
+			Edit => {
+				match event {
+					Down(8, 0, _) => {
+						self.state = Config;
+					},
+					Down(8, 1, _) => {
+						self.state = Sliders;
+					},
+					Down(0, 8, _) => {
+						self.first_y += 1;
+					},
+					Down(1, 8, _) => {
+						self.first_y -= 1;
+					},
+					Down(2, 8, _) => {
+						self.first_x -= 1;
+					},
+					Down(3, 8, _) => {
+						self.first_x += 1;
+					},
+					Down(xx, yy, velo) => {
+						if xx <= 8 && yy <= 8 {
+							let x = xx as isize + self.first_x;
+							let y = yy as isize + self.first_y;
+							if x >= 0 && (x as usize) < pattern.pattern.len() {
+								if pattern.get(x as usize, y).is_none() {
+									pattern.set(x as usize, Entry {
+										note: y,
+										len_steps: 1,
+										intensity: velo
+									}).ok();
+								}
+								else {
+									pattern.delete(x as usize, y);
+								}
+							}
+						}
+					},
+					Up(_, _, _) => {}
+				}
+			}
+			Config => {
+				match event {
+					Down(8, 0, _) => {
+						self.state = Edit;
+					},
+					Down(8, 1, _) => {
+						self.state = Sliders;
+					},
+					_ => {}
+				}
+			}
+			Sliders => {
+				match event {
+					Down(8, 0, _) => {
+						self.state = Config;
+					},
+					Down(8, 1, _) => {
+						self.state = Edit;
+					},
+					_ => {}
+				}
+			}
+		}
+	}
+
+	pub fn draw(&mut self, pattern: &ArpeggioData, step: f32, mut set_led: impl FnMut((u8,u8), LaunchpadColorspec)) {
+		use GuiState::*;
+		use LaunchpadColorspec::*;
+		match self.state {
+			Edit => {
+				set_led((0,8), Off);
+				set_led((1,8), Off);
+
+				let mut array = [[None; 8]; 8];
+				println!("==============================================");
+				for x in 0usize..8 {
+					let pos = x as isize + self.first_x;
+					if pos >= 0 && pos < 8 {
+						for e in pattern.pattern[pos as usize].iter() {
+							println!("event: {:?}", e);
+							let y = e.note - self.first_y;
+							if (0..8).contains(&y) {
+								for i in 0..e.len_steps {
+									if x + (i as usize) < 8 {
+										let foo = &mut array[x + i as usize][y as usize];
+										if foo.is_some() {
+											*foo = Some(Solid(Color::White(1.0)));
+										}
+										else {
+											let color = if i == 0 {
+												Color::Color((120.0 + 60.0 * e.intensity) as u16, 0.25 + 0.75 * e.intensity)
+											}
+											else {
+												Color::Color(0, 0.3)
+											};
+											*foo = Some(Solid(color));
+										}
+									}
+								}
+							}
+						}
+					}
+					else {
+						for y in 0..8 {
+							array[x][y] = Some(Solid(Color::Color(0,0.3)));
+						}
+					}
+				}
+
+				let hl_y = -self.first_y;
+				if (0..8).contains(&hl_y) {
+					for x in 0..8 {
+						array[x][hl_y as usize].get_or_insert(Solid(Color::White(0.3)));
+					}
+				}
+
+
+				let hl_x = step as isize - self.first_x;
+				if (0..8).contains(&hl_x) {
+					for y in 0..8 {
+						array[hl_x as usize][y] = Some(array[hl_x as usize][y].unwrap_or(Off).bright());
+					}
+				}
+				
+				for x in 0..8 {
+					for y in 0..8 {
+						set_led((x,y), array[x as usize][y as usize].unwrap_or(Off));
+					}
+				}
+			},
+			Config => {
+				set_led((0,8), Fade(Color::Color(0, 0.74)));
+				set_led((1,8), Off);
+			},
+			Sliders => {
+				set_led((1,8), Fade(Color::Color(0, 0.74)));
+				set_led((0,8), Off);
+			}
+		}
+	}
+}
+
 struct JackDriver {
 	in_port: Port<MidiIn>,
 	out_port: Port<MidiOut>,
@@ -151,15 +348,17 @@ struct JackDriver {
 	time: u64,
 	pending_events: heapless::Vec<(u64, NoteEvent), U32>,
 	arp: Arpeggiator,
+	gui_controller: GuiController,
 	pattern: ArpeggioData,
 	tempo: TempoDetector,
 	channel: u8,
 	out_channel: u8,
+	periods: u64
 }
 
 impl JackDriver {
 	pub fn new(name: &str, client: &jack::Client) -> Result<JackDriver, jack::Error> {
-		Ok(JackDriver {
+		let driver = JackDriver {
 			in_port: client.register_port(&format!("{}_in", name), MidiIn)?,
 			out_port: client.register_port(&format!("{}_out", name), MidiOut)?,
 			ui_in_port: client.register_port(&format!("{}_launchpad_in", name), MidiIn)?,
@@ -168,6 +367,7 @@ impl JackDriver {
 			ticks_per_step: 12,
 			tick_counter: 0,
 			time: 0,
+			gui_controller: GuiController::new(),
 			pending_events: heapless::Vec::new(),
 			arp: Arpeggiator::new(),
 			pattern: ArpeggioData {
@@ -185,30 +385,28 @@ impl JackDriver {
 			},
 			tempo: TempoDetector::new(),
 			channel: 0,
-			out_channel: 0
-		})
+			out_channel: 0,
+			periods: 0
+		};
+		Ok(driver)
 	}
 
-	pub fn process(&mut self, scope: &ProcessScope) {
-		let mut ui_writer = self.ui_out_port.writer(scope);
+	pub fn autoconnect(&self, client: &jack::Client) {
+		for p in client.ports(Some(".*playback.*Launchpad X MIDI 2"), None, jack::PortFlags::empty()) {
+			client.connect_ports(&self.ui_out_port, &client.port_by_name(&p).unwrap()).expect("Failed to connect");
+		}
+		for p in client.ports(Some(".*capture.*Launchpad X MIDI 2"), None, jack::PortFlags::empty()) {
+			client.connect_ports(&client.port_by_name(&p).unwrap(), &self.ui_in_port).expect("Failed to connect");
+		}
+	}
+
+	pub fn process(&mut self, client: &jack::Client, scope: &ProcessScope) {
 		for ev in self.ui_in_port.iter(scope) {
 			println!("event!");
+			let gui_controller = &mut self.gui_controller;
+			let pattern = &mut self.pattern;
 			self.ui.handle_midi(ev.bytes, |ui, event| {
-				use LaunchpadEvent::*;
-				println!("da real event");
-				match event {
-					Down(x, y, intensity) => {
-						ui.set((x,y), LaunchpadColorspec::Solid(Color::Color((intensity*360.0) as u16, 0.7)), |bytes| {
-							println!("write midi of len {}", bytes.len());
-							ui_writer.write(&jack::RawMidi { time: 0, bytes }).ok();
-						});
-					}
-					Up(x, y, _) => {
-						ui.set((x,y), LaunchpadColorspec::Off, |bytes| {
-							ui_writer.write(&jack::RawMidi { time: 0, bytes }).ok();
-						});
-					}
-				}
+				gui_controller.handle_input(event, pattern);
 			});
 		}
 
@@ -232,8 +430,6 @@ impl JackDriver {
 						let event_timestamp = timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
 						pending_events.push((event_timestamp, event)).map_err(|_|())
 					});
-
-					println!("beat (time since last beat = {}). pending: {:?}", time_per_beat, self.pending_events);
 				}
 			}
 			if event.bytes[0] == 0x90 | self.channel {
@@ -243,6 +439,12 @@ impl JackDriver {
 				self.arp.note_off(Note(event.bytes[1]));
 			}
 		}
+
+		let mut ui_writer = self.ui_out_port.writer(scope);
+		let ui = &mut self.ui;
+		self.gui_controller.draw(&self.pattern, self.arp.step as f32 + self.tick_counter as f32 / self.ticks_per_step as f32, |pos, color| {
+			ui.set(pos, color, |bytes| { ui_writer.write(&jack::RawMidi { time: 0, bytes }).unwrap(); });
+		});
 
 		self.pending_events.sort_by_key(|e| e.0);
 		let end = self.pending_events.iter()
@@ -273,6 +475,23 @@ impl JackDriver {
 		self.pending_events.truncate(self.pending_events.len() - end);
 
 		self.time += scope.n_frames() as u64;
+		
+		if self.periods == 0 {
+			self.autoconnect(client);
+		}
+		if self.periods == 1 {
+			let mut writer = self.ui_out_port.writer(scope);
+			writer.write(
+				&jack::RawMidi {
+					time: 0,
+					bytes: &[0xF0, 0x00, 0x20, 0x29, 0x02, 0x0C, 0x0E, 0x01, 0xF7]
+				}
+			).ok();
+
+			self.ui.force_update(|bytes| { writer.write(&jack::RawMidi{time:0, bytes}).expect("write failed"); });
+		}
+		self.periods += 1;
+
 	}
 }
 
@@ -299,14 +518,12 @@ impl Arpeggiator {
 			self.chord.push(note);
 			self.chord.sort();
 		}
-		println!("chord is {:?}", self.chord);
 	}
 	pub fn note_off(&mut self, note: Note) {
 		if let Some(i) = self.chord.iter().position(|n| *n == note) {
 			self.chord.swap_remove(i);
 			self.chord.sort();
 		}
-		println!("chord is {:?}", self.chord);
 	}
 	pub fn process_step<F: FnMut(f32, NoteEvent) -> Result<(),()>>(&mut self, pattern: &ArpeggioData, mut callback: F) -> Result<(),()> {
 		let current_step = self.step;
@@ -348,6 +565,16 @@ enum Color {
 	White(f32)
 }
 
+impl Color {
+	pub fn bright(&self) -> Color {
+		use crate::Color::*;
+		match *self {
+			Color(c, _) => Color(c, 1.0),
+			White(_) => White(1.0)
+		}
+	}
+}
+
 #[derive(Clone,Copy,Debug)]
 enum LaunchpadColorspec {
 	Off,
@@ -356,6 +583,20 @@ enum LaunchpadColorspec {
 	Fade(Color),
 	Alternate(Color, Color)
 }
+
+impl LaunchpadColorspec {
+	pub fn bright(&self) -> LaunchpadColorspec {
+		use LaunchpadColorspec::*;
+		match *self {
+			Off => Solid(Color::White(0.3)),
+			Solid(c) => Solid(c.bright()),
+			Blink(c) => Blink(c.bright()),
+			Fade(c) => Fade(c.bright()),
+			Alternate(c1,c2) => Alternate(c1.bright(), c2.bright())
+		}
+	}
+}
+
 
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
 enum LaunchpadInternalColorspec {
@@ -371,13 +612,20 @@ impl LaunchpadX {
 		}
 	}
 
+	pub fn force_update(&self, mut send: impl FnMut(&[u8])) {
+		for i in 0..8 {
+			for j in 0..8 {
+				self.send((i,j), &mut send);
+			}
+		}
+	}
+
 	pub fn handle_midi(&mut self, message: &[u8], mut f: impl FnMut(&mut Self, LaunchpadEvent)) {
 		fn id2coord(id: u8) -> Option<(u8, u8)> {
 			let x = id % 10;
 			let y = id / 10;
-			println!("x,y = {}, {}", x, y);
 
-			if (1..9).contains(&x) && (1..9).contains(&y) {
+			if (1..=9).contains(&x) && (1..=9).contains(&y) {
 				Some((x-1, y-1))
 			}
 			else {
@@ -385,15 +633,13 @@ impl LaunchpadX {
 			}
 		}
 		use LaunchpadEvent::*;
-		println!("{}", message.len());
 		if message.len() == 3 {
-			println!("{}, {:02x} {:02x} {:02x}", message.len(), message[0], message[1], message[2]);
-			if message[0] == 0x90 && message[2] != 0 {
+			if (message[0] == 0x90 || message[0] == 0xB0) && message[2] != 0 {
 				if let Some((x,y)) = id2coord(message[1]) {
 					f(self, Down(x, y, message[2] as f32 / 127.0));
 				}
 			}
-			if message[0] == 0x90 && message[2] == 0 {
+			if (message[0] == 0x90 || message[0] == 0xB0) && message[2] == 0 {
 				if let Some((x,y)) = id2coord(message[1]) {
 					f(self, Up(x, y, 64.0));
 				}
@@ -425,7 +671,6 @@ impl LaunchpadX {
 
 		assert!( (0..9).contains(&pos.0) );
 		assert!( (0..9).contains(&pos.1) );
-		let note = (pos.0 + 1) + 10 * (pos.1 + 1);
 		use LaunchpadColorspec::*;
 		let new_spec = match colorspec {
 			Off => LaunchpadInternalColorspec::Solid(0),
@@ -436,20 +681,24 @@ impl LaunchpadX {
 		};
 
 		let field = &mut self.state[pos.0 as usize][pos.1 as usize];
-		println!("field was {:?}, is {:?}", *field, new_spec);
 		if *field != new_spec {
 			*field = new_spec;
-			match new_spec {
-				LaunchpadInternalColorspec::Solid(c) => {
-					send(&[0x90, note, c]);
-				}
-				LaunchpadInternalColorspec::Alternate(c1, c2) => {
-					send(&[0x90, note, c1]);
-					send(&[0x91, note, c2]);
-				}
-				LaunchpadInternalColorspec::Fade(c) => {
-					send(&[0x92, note, c]);
-				}
+			self.send(pos, &mut send);
+		}
+	}
+	
+	fn send(&self, pos: (u8,u8), send: &mut impl FnMut(&[u8])) {
+		let note = (pos.0 + 1) + 10 * (pos.1 + 1);
+		match self.state[pos.0 as usize][pos.1 as usize] {
+			LaunchpadInternalColorspec::Solid(c) => {
+				send(&[0x90, note, c]);
+			}
+			LaunchpadInternalColorspec::Alternate(c1, c2) => {
+				send(&[0x90, note, c1]);
+				send(&[0x91, note, c2]);
+			}
+			LaunchpadInternalColorspec::Fade(c) => {
+				send(&[0x92, note, c]);
 			}
 		}
 	}
@@ -458,15 +707,12 @@ impl LaunchpadX {
 fn main() {
 	let client = jack::Client::new("arpfisch", jack::ClientOptions::NO_START_SERVER).expect("Failed to connect to JACK").0;
 
-	let launchpad_in_port = client.register_port("launchpad_in", MidiIn).unwrap();
-	let launchpad_out_port = client.register_port("launchpad_out", MidiIn).unwrap();
-
 	let mut jack_driver = JackDriver::new("fnord", &client).unwrap();
 
 	//let (mut producer, mut consumer) = ringbuf::RingBuffer::<Message>::new(10).split();
 
-	let _async_client = client.activate_async((), jack::ClosureProcessHandler::new(move |_client: &jack::Client, scope: &ProcessScope| -> Control {
-		jack_driver.process(scope);
+	let async_client = client.activate_async((), jack::ClosureProcessHandler::new(move |client: &jack::Client, scope: &ProcessScope| -> Control {
+		jack_driver.process(client, scope);
 		return Control::Continue;
 	})).expect("Failed to activate client");
 
