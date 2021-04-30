@@ -71,12 +71,18 @@ impl RepeatMode {
 			}
 
 			Mirror => {
-				let repeated_index = modulo(index, 2*pitches.len()-2);
-				if repeated_index < pitches.len() {
-					Some(pitches[repeated_index])
+				if pitches.len() == 1 {
+					Some(pitches[0])
 				}
-				else {
-					Some(pitches[2*pitches.len() - 1 - repeated_index])
+				else
+				{
+					let repeated_index = modulo(index, 2*pitches.len()-2);
+					if repeated_index < pitches.len() {
+						Some(pitches[repeated_index])
+					}
+					else {
+						Some(pitches[2*pitches.len() - 1 - repeated_index - 1])
+					}
 				}
 			}
 		}
@@ -247,13 +253,30 @@ impl GuiController {
 					Down(8, 1, _) => {
 						self.state = Sliders;
 					},
+					Down(2, 0, _) => {
+						pattern.repeat_mode = RepeatMode::Clamp;
+					}
+					Down(2, 1, _) => {
+						pattern.repeat_mode = RepeatMode::Mirror;
+					}
+					Down(2, 2, _) => {
+						pattern.repeat_mode = RepeatMode::Repeat(12);
+					}
 					Down(x, y, _) => {
 						if y >= 4 {
 							let new_len = x + 8 * (8 - y - 1) + 1;
 							pattern.pattern.resize_default(new_len as usize).ok();
 						}
-						if x == 0 && y < 4 {
-							self.pane_height = 8 / (y+1) as usize;
+						else {
+							if x == 0 {
+								self.pane_height = 8 / (y+1) as usize;
+							}
+							if x == 3 {
+								match pattern.repeat_mode {
+									RepeatMode::Repeat(_) => { pattern.repeat_mode = RepeatMode::Repeat((y as i32 - 1) * 12); }
+									_ => {}
+								}
+							}
 						}
 					}
 					_ => {}
@@ -345,6 +368,7 @@ impl GuiController {
 				set_led((8,0), Fade(Color::Color(0, 0.74)));
 				set_led((8,1), Off);
 
+				// display the pattern length
 				let pattern_len = pattern.pattern.len();
 				for y in 4..8 {
 					for x in 0..8 {
@@ -360,7 +384,8 @@ impl GuiController {
 						}
 					};
 				}
-
+				
+				// display the number of panes
 				let n_panes = 8 / self.pane_height;
 				for i in 0..4 {
 					if i+1 == n_panes {
@@ -370,10 +395,35 @@ impl GuiController {
 						array[0][i] = Some(Solid(Color::Color(240, 0.2)));
 					}
 				}
+
+				// repeat mode
+				for i in 0..3 {
+					array[2][i] = Some(Solid(Color::White(0.3)));
+				}
+				match pattern.repeat_mode {
+					RepeatMode::Clamp => {
+						array[2][0] = Some(Solid(Color::Color(60, 1.0)));
+					}
+					RepeatMode::Mirror => {
+						array[2][1] = Some(Solid(Color::Color(180, 1.0)));
+					}
+					RepeatMode::Repeat(transpose) => {
+						array[2][2] = Some(Solid(Color::Color(300, 1.0)));
+						for i in 0..4 {
+							array[3][i] = if transpose == (i as i32 - 1) * 12 {
+								Some(Solid(Color::White(1.0)))
+							}
+							else {
+								Some(Solid(Color::Color(300,0.1)))
+							}
+						}
+					}
+				}
 			},
 			Sliders => {
 				set_led((8,0), Off);
 				set_led((8,1), Fade(Color::Color(0, 0.74)));
+
 			}
 		}
 
@@ -574,7 +624,7 @@ impl Arpeggiator {
 		}
 	}
 	pub fn process_step<F: FnMut(f32, NoteEvent) -> Result<(),()>>(&mut self, pattern: &ArpeggioData, mut callback: F) -> Result<(),()> {
-		let current_step = self.step;
+		let current_step = self.step % pattern.pattern.len(); // pattern length could have changed, in which case we need to do this modulo again
 		self.step = (self.step + 1) % pattern.pattern.len();
 
 		for entry in pattern.pattern[current_step].iter() {
