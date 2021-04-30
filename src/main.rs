@@ -174,6 +174,7 @@ enum GuiState {
 
 struct GuiController {
 	state: GuiState,
+	pane_height: usize,
 	first_x: isize,
 	first_y: isize,
 }
@@ -182,6 +183,7 @@ impl GuiController {
 	pub fn new() -> GuiController {
 		GuiController {
 			state: GuiState::Edit,
+			pane_height: 4,
 			first_x: 0,
 			first_y: 0
 		}
@@ -216,8 +218,10 @@ impl GuiController {
 					},
 					Down(xx, yy, velo) => {
 						if xx <= 8 && yy <= 8 {
-							let x = xx as isize + self.first_x;
-							let y = yy as isize + self.first_y;
+							let n_panes = 8 / self.pane_height;
+							let pane = yy as usize / self.pane_height;
+							let x = xx as isize + self.first_x + 8 * (n_panes - pane - 1) as isize;
+							let y = (yy as isize % self.pane_height as isize) + self.first_y;
 							if x >= 0 && (x as usize) < pattern.pattern.len() {
 								if pattern.get(x as usize, y).is_none() {
 									pattern.set(x as usize, Entry {
@@ -269,56 +273,66 @@ impl GuiController {
 				set_led((8,1), Off);
 
 				let mut array = [[None; 8]; 8];
-				println!("==============================================");
-				for x in 0usize..8 {
-					let pos = x as isize + self.first_x;
-					if pos >= 0 && pos < 8 {
-						for e in pattern.pattern[pos as usize].iter() {
-							println!("event: {:?}", e);
-							let y = e.note - self.first_y;
-							if (0..8).contains(&y) {
-								for i in 0..e.len_steps {
-									if x + (i as usize) < 8 {
-										let foo = &mut array[x + i as usize][y as usize];
-										if foo.is_some() {
-											*foo = Some(Solid(Color::White(1.0)));
-										}
-										else {
-											let color = if i == 0 {
-												Color::Color((120.0 + 60.0 * e.intensity) as u16, 0.25 + 0.75 * e.intensity)
+
+				fn draw_into(array: &mut [[Option<LaunchpadColorspec>; 8]; 8], canvas_offset: (usize, usize), canvas_size: (usize, usize), pattern_offset: (isize, isize), pattern: &ArpeggioData, step: f32) {
+					// draw notes
+					for x in 0..canvas_size.0 {
+						let pos = x as isize + pattern_offset.0;
+						if pos >= 0 && pos < pattern.pattern.len() as isize  {
+							for e in pattern.pattern[pos as usize].iter() {
+								let y = e.note - pattern_offset.1;
+								if (0..canvas_size.1 as isize).contains(&y) {
+									for i in 0..e.len_steps {
+										let xx = x + i as usize;
+										if xx < canvas_size.0 {
+											let foo = &mut array[xx + canvas_offset.0][y as usize + canvas_offset.1];
+											if foo.is_some() {
+												*foo = Some(Solid(Color::White(1.0)));
 											}
 											else {
-												Color::Color(0, 0.3)
-											};
-											*foo = Some(Solid(color));
+												let color = if i == 0 {
+													Color::Color((120.0 + 60.0 * e.intensity) as u16, 0.25 + 0.75 * e.intensity)
+												}
+												else {
+													Color::Color(0, 0.3)
+												};
+												*foo = Some(Solid(color));
+											}
 										}
 									}
 								}
 							}
 						}
+						else {
+							for y in 0..canvas_size.1 {
+								array[x + canvas_offset.0][y + canvas_offset.1] = Some(Solid(Color::Color(0,0.3)));
+							}
+						}
 					}
-					else {
-						for y in 0..8 {
-							array[x][y] = Some(Solid(Color::Color(0,0.3)));
+				
+					// draw horizontal zero indicator
+					let hl_y = -pattern_offset.1;
+					if (0..canvas_size.1 as isize).contains(&hl_y) {
+						for x in 0..canvas_size.0 {
+							array[x + canvas_offset.0][hl_y as usize+ canvas_offset.1].get_or_insert(Solid(Color::White(0.3)));
+						}
+					}
+
+					// draw vertical step indicator
+					let hl_x = step as isize - pattern_offset.0;
+					if (0..canvas_size.0 as isize).contains(&hl_x) {
+						for y in 0..canvas_size.1 {
+							let foo = &mut array[hl_x as usize + canvas_offset.0][y + canvas_offset.1];
+							*foo = Some(foo.unwrap_or(Off).bright());
 						}
 					}
 				}
 
-				let hl_y = -self.first_y;
-				if (0..8).contains(&hl_y) {
-					for x in 0..8 {
-						array[x][hl_y as usize].get_or_insert(Solid(Color::White(0.3)));
-					}
+				let n_panes = 8 / self.pane_height;
+				for pane in 0..n_panes {
+					draw_into(&mut array, (0,self.pane_height * (n_panes - pane - 1)), (8,self.pane_height), (self.first_x + 8 * pane as isize, self.first_y), &pattern, step);
 				}
 
-
-				let hl_x = step as isize - self.first_x;
-				if (0..8).contains(&hl_x) {
-					for y in 0..8 {
-						array[hl_x as usize][y] = Some(array[hl_x as usize][y].unwrap_or(Off).bright());
-					}
-				}
-				
 				for x in 0..8 {
 					for y in 0..8 {
 						set_led((x,y), array[x as usize][y as usize].unwrap_or(Off));
@@ -364,7 +378,7 @@ impl JackDriver {
 			ui_in_port: client.register_port(&format!("{}_launchpad_in", name), MidiIn)?,
 			ui_out_port: client.register_port(&format!("{}_launchpad_out", name), MidiOut)?,
 			ui: LaunchpadX::new(),
-			ticks_per_step: 3,
+			ticks_per_step: 6,
 			tick_counter: 0,
 			time: 0,
 			gui_controller: GuiController::new(),
