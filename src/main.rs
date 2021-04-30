@@ -247,6 +247,15 @@ impl GuiController {
 					Down(8, 1, _) => {
 						self.state = Sliders;
 					},
+					Down(x, y, _) => {
+						if y >= 4 {
+							let new_len = x + 8 * (8 - y - 1) + 1;
+							pattern.pattern.resize_default(new_len as usize).ok();
+						}
+						if x == 0 && y < 4 {
+							self.pane_height = 8 / (y+1) as usize;
+						}
+					}
 					_ => {}
 				}
 			}
@@ -267,12 +276,11 @@ impl GuiController {
 	pub fn draw(&mut self, pattern: &ArpeggioData, step: f32, mut set_led: impl FnMut((u8,u8), LaunchpadColorspec)) {
 		use GuiState::*;
 		use LaunchpadColorspec::*;
+		let mut array = [[None; 8]; 8];
 		match self.state {
 			Edit => {
 				set_led((8,0), Off);
 				set_led((8,1), Off);
-
-				let mut array = [[None; 8]; 8];
 
 				fn draw_into(array: &mut [[Option<LaunchpadColorspec>; 8]; 8], canvas_offset: (usize, usize), canvas_size: (usize, usize), pattern_offset: (isize, isize), pattern: &ArpeggioData, step: f32) {
 					// draw notes
@@ -332,20 +340,46 @@ impl GuiController {
 				for pane in 0..n_panes {
 					draw_into(&mut array, (0,self.pane_height * (n_panes - pane - 1)), (8,self.pane_height), (self.first_x + 8 * pane as isize, self.first_y), &pattern, step);
 				}
-
-				for x in 0..8 {
-					for y in 0..8 {
-						set_led((x,y), array[x as usize][y as usize].unwrap_or(Off));
-					}
-				}
 			},
 			Config => {
 				set_led((8,0), Fade(Color::Color(0, 0.74)));
 				set_led((8,1), Off);
+
+				let pattern_len = pattern.pattern.len();
+				for y in 4..8 {
+					for x in 0..8 {
+						let curr_pos = x + (8-y-1)*8 + 1;
+						array[x][y] = if curr_pos < pattern_len {
+							Some(Solid(Color::Color(0, 0.7)))
+						}
+						else if curr_pos == pattern_len {
+							Some(Solid(Color::White(1.0)))
+						}
+						else {
+							Some(Solid(Color::Color(30, 0.1)))
+						}
+					};
+				}
+
+				let n_panes = 8 / self.pane_height;
+				for i in 0..4 {
+					if i+1 == n_panes {
+						array[0][i] = Some(Solid(Color::White(1.0)));
+					}
+					else {
+						array[0][i] = Some(Solid(Color::Color(240, 0.2)));
+					}
+				}
 			},
 			Sliders => {
 				set_led((8,0), Off);
 				set_led((8,1), Fade(Color::Color(0, 0.74)));
+			}
+		}
+
+		for x in 0..8 {
+			for y in 0..8 {
+				set_led((x,y), array[x as usize][y as usize].unwrap_or(Off));
 			}
 		}
 	}
