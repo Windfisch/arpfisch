@@ -758,7 +758,7 @@ impl Arpeggiator {
 			let length_modifier = self.global_length_modifier * (1.0 + (2.0 * entry.intensity - 1.0) * self.intensity_length_modifier_amount);
 			let velocity = (self.global_velocity * (0.5 + (entry.intensity - 0.5) * self.intensity_velocity_amount)).clamp(0.0, 1.0);
 			let note_length = entry.actual_len(length_modifier);
-			if let Some(note) = pattern.repeat_mode.get(&self.chord, entry.note) {
+			if let Some(note) = pattern.repeat_mode.get(&self.chord, entry.note).map(|n| n.transpose(entry.transpose)).flatten() {
 				callback(note_length, NoteEvent::NoteOff(note))?;
 				callback(0.0, NoteEvent::NoteOn(note, (127.0 * velocity) as u8))?;
 			}
