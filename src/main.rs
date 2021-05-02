@@ -573,7 +573,10 @@ struct JackDriver {
 	tempo: TempoDetector,
 	channel: u8,
 	out_channel: u8,
-	periods: u64
+	periods: u64,
+	last_midiclock_received: u64,
+	next_midiclock_to_send: u64,
+	time_between_midiclocks: u64
 }
 
 impl JackDriver {
@@ -606,7 +609,10 @@ impl JackDriver {
 			tempo: TempoDetector::new(),
 			channel: 0,
 			out_channel: 0,
-			periods: 0
+			periods: 0,
+			last_midiclock_received: 0,
+			next_midiclock_to_send: 0,
+			time_between_midiclocks: 24000 / 24
 		};
 		Ok(driver)
 	}
@@ -631,14 +637,21 @@ impl JackDriver {
 			});
 		}
 
+		let mut ui_writer = self.ui_out_port.writer(scope);
+
 		for event in self.in_port.iter(scope) {
 			let timestamp = self.time + event.time as u64;
+
 			if event.bytes[0] == 0xFA { // start
 				self.tick_counter = 0;
 				self.arp.reset();
 				self.tempo.reset();
 			}
 			if event.bytes[0] == 0xF8 || event.bytes[0] == 0xFA { // clock or start
+				self.last_midiclock_received = self.time;
+				
+				ui_writer.write(&event);
+				self.pending_events.push((timestamp, if event.bytes[0] == 0xF8 { NoteEvent::Clock } else { NoteEvent::Start }));
 				self.tick_counter += 1;
 				if self.tick_counter >= self.ticks_per_step {
 					self.tick_counter -= self.ticks_per_step;
@@ -661,10 +674,33 @@ impl JackDriver {
 			}
 		}
 
-		let mut ui_writer = self.ui_out_port.writer(scope);
+		if self.time - self.last_midiclock_received > 48000 { // FIXME magic constant
+			self.next_midiclock_to_send = self.next_midiclock_to_send.max(self.time);
+
+			if self.next_midiclock_to_send < self.time + scope.n_frames() as u64 {
+				ui_writer.write(&jack::RawMidi { time: (self.next_midiclock_to_send - self.time) as jack::Frames, bytes: &[0xF8] });
+				self.pending_events.push((self.next_midiclock_to_send, NoteEvent::Clock));
+
+				self.tick_counter += 1; // FIXME duplicated code :(
+				if self.tick_counter >= self.ticks_per_step {
+					self.tick_counter -= self.ticks_per_step;
+
+					let time_per_beat = self.time_between_midiclocks * 24;
+					let timestamp = self.next_midiclock_to_send;
+
+					let pending_events = &mut self.pending_events;
+					self.arp.process_step(&self.pattern, |timestamp_steps, event| {
+						let event_timestamp = timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
+						pending_events.push((event_timestamp, event)).map_err(|_|())
+					}).expect("process_step failed (buffer overflow?)");
+				}
+				self.next_midiclock_to_send = self.next_midiclock_to_send + self.time_between_midiclocks;
+			}
+		}
+
 		let ui = &mut self.ui;
 		self.gui_controller.draw(&self.pattern, self.arp.step as f32 + self.tick_counter as f32 / self.ticks_per_step as f32, |pos, color| {
-			ui.set(pos, color, |bytes| { ui_writer.write(&jack::RawMidi { time: 0, bytes }).expect("Writing to UI MIDI buffer failed"); });
+			ui.set(pos, color, |bytes| { ui_writer.write(&jack::RawMidi { time: scope.n_frames() - 1, bytes }).expect("Writing to UI MIDI buffer failed"); });
 		});
 
 		let before_sort = format!("{:?}", self.pending_events);
@@ -684,10 +720,12 @@ impl JackDriver {
 		}
 		for event in &self.pending_events[0..end] {
 			println!("event: {:?}", event);
-			let bytes = match event.1 {
-				NoteEvent::NoteOn(note, velo) => [0x90 | self.out_channel, note.0, velo],
-				NoteEvent::NoteOff(note) => [0x80 | self.out_channel, note.0, 64]
-			};
+			let bytes: heapless::Vec<_, U4> = match event.1 {
+				NoteEvent::NoteOn(note, velo) => heapless::Vec::from_slice(&[0x90 | self.out_channel, note.0, velo]),
+				NoteEvent::NoteOff(note) => heapless::Vec::from_slice(&[0x80 | self.out_channel, note.0, 64]),
+				NoteEvent::Clock => heapless::Vec::from_slice(&[0xF8]),
+				NoteEvent::Start => heapless::Vec::from_slice(&[0xFA])
+			}.unwrap();
 			writer.write(&jack::RawMidi {
 				time: (event.0 - self.time) as u32,
 				bytes: &bytes
@@ -723,7 +761,9 @@ impl JackDriver {
 #[derive(Copy, Clone, Debug)]
 enum NoteEvent {
 	NoteOn(Note, u8),
-	NoteOff(Note)
+	NoteOff(Note),
+	Clock,
+	Start
 }
 
 impl Arpeggiator {
