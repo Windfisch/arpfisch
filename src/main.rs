@@ -200,8 +200,11 @@ struct GuiController {
 	current_octave: i32
 }
 
+fn octave_hue(octave: i32) -> u16 {
+	((octave + 1) as u16 * 90)
+}
 fn octave_color(octave: i32) -> Color {
-	Color::Color((octave + 1) as u16 * 90, 1.0)
+	Color::Color(octave_hue(octave), 1.0)
 }
 
 impl GuiController {
@@ -436,7 +439,10 @@ impl GuiController {
 												*foo = Some(Solid(Color::White(1.0)));
 											}
 											else {
-												let hue = (120.0 + 60.0 * e.intensity) as u16;
+												assert!(e.transpose % 12 == 0);
+												let octave = e.transpose / 12;
+												assert!((-1..=2).contains(&octave));
+												let hue = octave_hue(octave) + (30.0 * e.intensity) as u16;
 												let color = if i == 0 {
 													Color::Color(hue, 0.25 + 0.75 * e.intensity)
 												}
