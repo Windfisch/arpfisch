@@ -178,11 +178,21 @@ enum GuiState {
 	Sliders,
 }
 
+#[derive(Copy, Clone)]
+struct HeldKey {
+	coords: (u8, u8),
+	pos: usize,
+	note: isize,
+	time: u64,
+	just_set: bool
+}
+
 struct GuiController {
 	state: GuiState,
 	pane_height: usize,
 	first_x: isize,
 	first_y: isize,
+	currently_held_key: Option<HeldKey>
 }
 
 impl GuiController {
@@ -191,11 +201,12 @@ impl GuiController {
 			state: GuiState::Edit,
 			pane_height: 4,
 			first_x: 0,
-			first_y: 0
+			first_y: 0,
+			currently_held_key: None
 		}
 	}
 
-	pub fn handle_input(&mut self, event: LaunchpadEvent, pattern: &mut ArpeggioData) {
+	pub fn handle_input(&mut self, event: LaunchpadEvent, pattern: &mut ArpeggioData, time: u64) {
 		use LaunchpadEvent::*;
 		use GuiState::*;
 
@@ -222,6 +233,12 @@ impl GuiController {
 					Down(3, 8, _) => {
 						self.first_x += 1;
 					},
+					Down(x, 8, _) => {
+						let octave = x - 4;
+						if let Some(held) = self.currently_held_key {
+							// TODO
+						}
+					},
 					Down(xx, yy, velo) => {
 						if xx <= 8 && yy <= 8 {
 							let n_panes = 8 / self.pane_height;
@@ -229,20 +246,73 @@ impl GuiController {
 							let x = xx as isize + self.first_x + 8 * (n_panes - pane - 1) as isize;
 							let y = (yy as isize % self.pane_height as isize) + self.first_y;
 							if x >= 0 && (x as usize) < pattern.pattern.len() {
-								if pattern.get(x as usize, y).is_none() {
-									pattern.set(x as usize, Entry {
-										note: y,
-										len_steps: 1,
-										intensity: velo
-									}).ok();
+								#[derive(PartialEq)]
+								enum PressMode {
+									Primary,
+									SecondaryUnrelated,
+									SetLength
+								}
+								let mode =
+								if let Some(held) = self.currently_held_key {
+									if held.note == y && held.pos < x as usize {
+										PressMode::SetLength
+									}
+									else {
+										PressMode::SecondaryUnrelated
+									}
 								}
 								else {
-									pattern.delete(x as usize, y);
+									self.currently_held_key = Some(HeldKey { coords: (xx,yy), pos: x as usize, note: y, time, just_set: pattern.get(x as usize, y).is_none() });
+									PressMode::Primary
+								};
+
+								if pattern.get(x as usize, y).is_none() {
+									match mode {
+										PressMode::Primary | PressMode::SecondaryUnrelated => {
+											pattern.set(x as usize, Entry {
+												note: y,
+												len_steps: 1,
+												intensity: velo
+											}).ok();
+										}
+										PressMode::SetLength => {
+											let begin_x = self.currently_held_key.unwrap().pos;
+											pattern.get_mut(begin_x, y).unwrap().len_steps = (x as isize - begin_x as isize + 1) as u32;
+										}
+									}
 								}
+								else {
+									match mode {
+										PressMode::SecondaryUnrelated => {
+											pattern.delete(x as usize, y);
+										}
+										PressMode::Primary | PressMode::SetLength => {}
+									}
+								}
+
 							}
 						}
 					},
-					Up(_, _, _) => {}
+					Up(xx, yy, _) => {
+						if xx < 8 && yy < 8 {
+							let n_panes = 8 / self.pane_height;
+							let pane = yy as usize / self.pane_height;
+							let x = xx as isize + self.first_x + 8 * (n_panes - pane - 1) as isize;
+							let y = (yy as isize % self.pane_height as isize) + self.first_y;
+
+							let mut dont_delete = true;
+							if let Some(held) = self.currently_held_key {
+								if held.coords == (xx,yy) {
+									dont_delete = time - held.time >= 10000 || held.just_set;
+									self.currently_held_key = None;
+								}
+							}
+							if !dont_delete && x >= 0 && x < pattern.pattern.len() as isize {
+								pattern.delete(x as usize, y);
+							}
+
+						}
+					}
 				}
 			}
 			Config => {
@@ -321,11 +391,12 @@ impl GuiController {
 												*foo = Some(Solid(Color::White(1.0)));
 											}
 											else {
+												let hue = (120.0 + 60.0 * e.intensity) as u16;
 												let color = if i == 0 {
-													Color::Color((120.0 + 60.0 * e.intensity) as u16, 0.25 + 0.75 * e.intensity)
+													Color::Color(hue, 0.25 + 0.75 * e.intensity)
 												}
 												else {
-													Color::Color(0, 0.3)
+													Color::Color(hue, 0.1)
 												};
 												*foo = Some(Solid(color));
 											}
@@ -503,8 +574,9 @@ impl JackDriver {
 			println!("event!");
 			let gui_controller = &mut self.gui_controller;
 			let pattern = &mut self.pattern;
+			let time = self.time;
 			self.ui.handle_midi(ev.bytes, |ui, event| {
-				gui_controller.handle_input(event, pattern);
+				gui_controller.handle_input(event, pattern, time);
 			});
 		}
 
@@ -527,7 +599,7 @@ impl JackDriver {
 					self.arp.process_step(&self.pattern, |timestamp_steps, event| {
 						let event_timestamp = timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
 						pending_events.push((event_timestamp, event)).map_err(|_|())
-					});
+					}).expect("process_step failed (buffer overflow?)");
 				}
 			}
 			if event.bytes[0] == 0x90 | self.channel {
@@ -541,9 +613,10 @@ impl JackDriver {
 		let mut ui_writer = self.ui_out_port.writer(scope);
 		let ui = &mut self.ui;
 		self.gui_controller.draw(&self.pattern, self.arp.step as f32 + self.tick_counter as f32 / self.ticks_per_step as f32, |pos, color| {
-			ui.set(pos, color, |bytes| { ui_writer.write(&jack::RawMidi { time: 0, bytes }).unwrap(); });
+			ui.set(pos, color, |bytes| { ui_writer.write(&jack::RawMidi { time: 0, bytes }).expect("Writing to UI MIDI buffer failed"); });
 		});
 
+		let before_sort = format!("{:?}", self.pending_events);
 		self.pending_events.sort_by_key(|e| e.0);
 		let end = self.pending_events.iter()
 			.enumerate()
@@ -553,6 +626,11 @@ impl JackDriver {
 			.unwrap_or(self.pending_events.len());
 
 		let mut writer = self.out_port.writer(scope);
+		if end != 0 {
+			println!("==== {}", end);
+			println!("{}", before_sort);
+			println!("{:?}", self.pending_events);
+		}
 		for event in &self.pending_events[0..end] {
 			println!("event: {:?}", event);
 			let bytes = match event.1 {
@@ -562,13 +640,11 @@ impl JackDriver {
 			writer.write(&jack::RawMidi {
 				time: (event.0 - self.time) as u32,
 				bytes: &bytes
-			});
+			}).expect("Writing to MIDI buffer failed");
 		}
 
-		for i in 0..end {
-			if end + i < self.pending_events.len() {
-				self.pending_events[i] = self.pending_events[i+end];
-			}
+		for i in 0..(self.pending_events.len() - end) {
+			self.pending_events[i] = self.pending_events[i+end];
 		}
 		self.pending_events.truncate(self.pending_events.len() - end);
 
@@ -577,16 +653,16 @@ impl JackDriver {
 		if self.periods == 0 {
 			self.autoconnect(client);
 		}
-		if self.periods == 1 {
+		if self.periods == 10 {
 			let mut writer = self.ui_out_port.writer(scope);
 			writer.write(
 				&jack::RawMidi {
 					time: 0,
 					bytes: &[0xF0, 0x00, 0x20, 0x29, 0x02, 0x0C, 0x0E, 0x01, 0xF7]
 				}
-			).ok();
+			).expect("Writing to the MIDI buffer failed");
 
-			self.ui.force_update(|bytes| { writer.write(&jack::RawMidi{time:0, bytes}).expect("write failed"); });
+			self.ui.force_update(|bytes| { writer.write(&jack::RawMidi{time:0, bytes}).expect("Writing to UI MIDI buffer failed"); });
 		}
 		self.periods += 1;
 
@@ -613,7 +689,7 @@ impl Arpeggiator {
 
 	pub fn note_on(&mut self, note: Note) {
 		if self.chord.iter().position(|n| *n == note).is_none() {
-			self.chord.push(note);
+			self.chord.push(note).ok();
 			self.chord.sort();
 		}
 	}
