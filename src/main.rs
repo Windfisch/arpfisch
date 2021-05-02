@@ -94,6 +94,7 @@ struct Entry {
 	note: isize,
 	len_steps: u32,
 	intensity: f32,
+	transpose: i32
 }
 
 impl Entry {
@@ -114,14 +115,14 @@ struct ArpeggioData {
 }
 
 impl ArpeggioData {
-	pub fn get_mut(&mut self, pos: usize, note: isize) -> Option<&mut Entry> {
-		self.pattern[pos].iter_mut().find(|e| e.note == note)
+	pub fn filter_mut(&mut self, pos: usize, note: isize) -> impl Iterator<Item = &mut Entry> {
+		self.pattern[pos].iter_mut().filter(move |e| e.note == note)
 	}
-	pub fn get(&mut self, pos: usize, note: isize) -> Option<&Entry> {
-		self.pattern[pos].iter().find(|e| e.note == note)
+	pub fn filter(&self, pos: usize, note: isize) -> impl Iterator<Item = &Entry> {
+		self.pattern[pos].iter().filter(move |e| e.note == note)
 	}
 	pub fn set(&mut self, pos: usize, entry: Entry) -> Result<(), Entry> {
-		if let Some(e) = self.get_mut(pos, entry.note) {
+		if let Some(e) = self.pattern[pos].iter_mut().find(|e| e.note == entry.note && e.transpose == entry.transpose) {
 			*e = entry;
 			Ok(())
 		}
@@ -129,12 +130,15 @@ impl ArpeggioData {
 			self.pattern[pos].push(entry)
 		}
 	}
-	pub fn delete(&mut self, pos: usize, note: isize) -> bool {
-		if let Some((i, _)) = self.pattern[pos].iter().find_position(|e| e.note == note) {
+	pub fn delete_all(&mut self, pos: usize, note: isize) {
+		while let Some((i, _)) = self.pattern[pos].iter().find_position(|e| e.note == note) {
 			self.pattern[pos].swap_remove(i);
-			return true;
 		}
-		return false;
+	}
+	pub fn delete(&mut self, pos: usize, entry: Entry) {
+		while let Some((i, _)) = self.pattern[pos].iter().find_position(|e| e.note == entry.note && e.transpose == entry.transpose) {
+			self.pattern[pos].swap_remove(i);
+		}
 	}
 }
 
@@ -192,7 +196,12 @@ struct GuiController {
 	pane_height: usize,
 	first_x: isize,
 	first_y: isize,
-	currently_held_key: Option<HeldKey>
+	currently_held_key: Option<HeldKey>,
+	current_octave: i32
+}
+
+fn octave_color(octave: i32) -> Color {
+	Color::Color((octave + 1) as u16 * 90, 1.0)
 }
 
 impl GuiController {
@@ -202,7 +211,8 @@ impl GuiController {
 			pane_height: 4,
 			first_x: 0,
 			first_y: 0,
-			currently_held_key: None
+			currently_held_key: None,
+			current_octave: 0
 		}
 	}
 
@@ -234,9 +244,23 @@ impl GuiController {
 						self.first_x += 1;
 					},
 					Down(x, 8, _) => {
-						let octave = x - 4;
+						let octave = x as i32 - 5;
 						if let Some(held) = self.currently_held_key {
-							// TODO
+							if pattern.filter(held.pos, held.note).count() > 0 { // the step can become un-set by disabling all octaves, yet it is still held down
+								let entry_opt = pattern.filter(held.pos, held.note).find(|e| e.transpose == octave * 12).cloned();
+								if let Some(entry) = entry_opt {
+									let delete_entry = entry.clone();
+									pattern.delete(held.pos, delete_entry);
+								}
+								else {
+									let mut new_entry = pattern.filter(held.pos, held.note).next().unwrap().clone();
+									new_entry.transpose = octave * 12;
+									pattern.set(held.pos, new_entry);
+								}
+							}
+						}
+						else {
+							self.current_octave = octave;
 						}
 					},
 					Down(xx, yy, velo) => {
@@ -246,6 +270,8 @@ impl GuiController {
 							let x = xx as isize + self.first_x + 8 * (n_panes - pane - 1) as isize;
 							let y = (yy as isize % self.pane_height as isize) + self.first_y;
 							if x >= 0 && (x as usize) < pattern.pattern.len() {
+								let step_has_any_note = pattern.filter(x as usize, y).count() > 0;
+
 								#[derive(PartialEq)]
 								enum PressMode {
 									Primary,
@@ -253,38 +279,41 @@ impl GuiController {
 									SetLength
 								}
 								let mode =
-								if let Some(held) = self.currently_held_key {
-									if held.note == y && held.pos < x as usize {
-										PressMode::SetLength
+									if let Some(held) = self.currently_held_key {
+										if held.note == y && held.pos < x as usize {
+											PressMode::SetLength
+										}
+										else {
+											PressMode::SecondaryUnrelated
+										}
 									}
 									else {
-										PressMode::SecondaryUnrelated
-									}
-								}
-								else {
-									self.currently_held_key = Some(HeldKey { coords: (xx,yy), pos: x as usize, note: y, time, just_set: pattern.get(x as usize, y).is_none() });
-									PressMode::Primary
-								};
+										self.currently_held_key = Some(HeldKey { coords: (xx,yy), pos: x as usize, note: y, time, just_set: !step_has_any_note });
+										PressMode::Primary
+									};
 
-								if pattern.get(x as usize, y).is_none() {
+								if !step_has_any_note {
 									match mode {
 										PressMode::Primary | PressMode::SecondaryUnrelated => {
 											pattern.set(x as usize, Entry {
 												note: y,
 												len_steps: 1,
-												intensity: velo
+												intensity: velo,
+												transpose: 12 * self.current_octave
 											}).ok();
 										}
 										PressMode::SetLength => {
 											let begin_x = self.currently_held_key.unwrap().pos;
-											pattern.get_mut(begin_x, y).unwrap().len_steps = (x as isize - begin_x as isize + 1) as u32;
+											for entry in pattern.filter_mut(begin_x, y) {
+												entry.len_steps = (x as isize - begin_x as isize + 1) as u32;
+											}
 										}
 									}
 								}
 								else {
 									match mode {
 										PressMode::SecondaryUnrelated => {
-											pattern.delete(x as usize, y);
+											pattern.delete_all(x as usize, y);
 										}
 										PressMode::Primary | PressMode::SetLength => {}
 									}
@@ -308,7 +337,7 @@ impl GuiController {
 								}
 							}
 							if !dont_delete && x >= 0 && x < pattern.pattern.len() as isize {
-								pattern.delete(x as usize, y);
+								pattern.delete_all(x as usize, y);
 							}
 
 						}
@@ -374,6 +403,22 @@ impl GuiController {
 			Edit => {
 				set_led((8,0), Off);
 				set_led((8,1), Off);
+
+				let mut octave_buttons = [Off; 4];
+				if let Some(held) = self.currently_held_key {
+					for entry in pattern.filter(held.pos, held.note) {
+						assert!(entry.transpose % 12 == 0);
+						let octave = entry.transpose / 12;
+						assert!((-1..=2).contains(&octave));
+						octave_buttons[(octave + 1) as usize] = Solid(octave_color(octave));
+					}
+				}
+				else {
+					octave_buttons[(self.current_octave + 1) as usize] = Solid(octave_color(self.current_octave));
+				}
+				for i in 0..4 {
+					set_led((i + 4,8), octave_buttons[i as usize]);
+				}
 
 				fn draw_into(array: &mut [[Option<LaunchpadColorspec>; 8]; 8], canvas_offset: (usize, usize), canvas_size: (usize, usize), pattern_offset: (isize, isize), pattern: &ArpeggioData, step: f32) {
 					// draw notes
@@ -541,14 +586,14 @@ impl JackDriver {
 			arp: Arpeggiator::new(),
 			pattern: ArpeggioData {
 				pattern: heapless::Vec::from_slice(&[
-					heapless::Vec::from_slice(&[Entry{note: 0, len_steps: 1, intensity: 0.5}]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: -1, len_steps: 1, intensity: 0.5}]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 0, len_steps: 1, intensity: 0.5}]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 1, len_steps: 1, intensity: 0.5}]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 2, len_steps: 1, intensity: 0.5}]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 3, len_steps: 1, intensity: 0.5}]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 4, len_steps: 1, intensity: 0.5}]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 5, len_steps: 1, intensity: 0.5}]).unwrap(),
+					heapless::Vec::from_slice(&[Entry{note: 0, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
+					heapless::Vec::from_slice(&[Entry{note:-1, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
+					heapless::Vec::from_slice(&[Entry{note: 0, len_steps: 1, intensity: 0.5, transpose:12 }]).unwrap(),
+					heapless::Vec::from_slice(&[Entry{note: 1, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
+					heapless::Vec::from_slice(&[Entry{note: 2, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
+					heapless::Vec::from_slice(&[Entry{note: 3, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
+					heapless::Vec::from_slice(&[Entry{note: 4, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
+					heapless::Vec::from_slice(&[Entry{note: 5, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
 				]).unwrap(),
 				repeat_mode: RepeatMode::Repeat(12),
 			},
