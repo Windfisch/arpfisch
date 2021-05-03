@@ -17,8 +17,5 @@ impl TempoDetector {
 		}
 		self.last_timestamp = Some(timestamp);
 	}
-	pub fn reset(&mut self) {
-		self.last_timestamp = None;
-	}
+	pub fn reset(&mut self) { self.last_timestamp = None; }
 }
-

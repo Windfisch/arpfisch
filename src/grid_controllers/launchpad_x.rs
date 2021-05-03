@@ -1,9 +1,9 @@
 use super::*;
 
-#[derive(Clone,Copy,Debug,PartialEq,Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LaunchpadInternalColorspec {
 	Solid(u8),
-	Alternate(u8,u8),
+	Alternate(u8, u8),
 	Fade(u8)
 }
 
@@ -16,7 +16,7 @@ fn id2coord(id: u8) -> Option<(u8, u8)> {
 	let y = id / 10;
 
 	if (1..=9).contains(&x) && (1..=9).contains(&y) {
-		Some((x-1, y-1))
+		Some((x - 1, y - 1))
 	}
 	else {
 		None
@@ -29,8 +29,8 @@ impl LaunchpadX {
 			state: [[LaunchpadInternalColorspec::Solid(0); 9]; 9]
 		}
 	}
-	
-	fn send(&self, pos: (u8,u8), send: &mut impl FnMut(&[u8])) {
+
+	fn send(&self, pos: (u8, u8), send: &mut impl FnMut(&[u8])) {
 		let note = (pos.0 + 1) + 10 * (pos.1 + 1);
 		match self.state[pos.0 as usize][pos.1 as usize] {
 			LaunchpadInternalColorspec::Solid(c) => {
@@ -51,8 +51,8 @@ impl GridController for LaunchpadX {
 	fn force_update(&self, mut send: impl FnMut(&[u8])) {
 		for i in 0..9 {
 			for j in 0..9 {
-				if (i,j) != (8,8) {
-					self.send((i,j), &mut send);
+				if (i, j) != (8, 8) {
+					self.send((i, j), &mut send);
 				}
 			}
 		}
@@ -62,24 +62,24 @@ impl GridController for LaunchpadX {
 		use GridButtonEvent::*;
 		if message.len() == 3 {
 			if (message[0] == 0x90 || message[0] == 0xB0) && message[2] != 0 {
-				if let Some((x,y)) = id2coord(message[1]) {
+				if let Some((x, y)) = id2coord(message[1]) {
 					f(self, Down(x, y, message[2] as f32 / 127.0));
 				}
 			}
 			if (message[0] == 0x90 || message[0] == 0xB0) && message[2] == 0 {
-				if let Some((x,y)) = id2coord(message[1]) {
+				if let Some((x, y)) = id2coord(message[1]) {
 					f(self, Up(x, y, 64.0));
 				}
 			}
 			if message[0] == 0x80 {
-				if let Some((x,y)) = id2coord(message[1]) {
+				if let Some((x, y)) = id2coord(message[1]) {
 					f(self, Up(x, y, message[2] as f32 / 127.0));
 				}
 			}
 		}
 	}
 
-	fn set(&mut self, pos: (u8,u8), colorspec: LightingMode, mut send: impl FnMut(&[u8])) {
+	fn set(&mut self, pos: (u8, u8), colorspec: LightingMode, mut send: impl FnMut(&[u8])) {
 		fn color(c: Color) -> u8 {
 			#[rustfmt::skip]
 			let offsets = [
@@ -92,20 +92,22 @@ impl GridController for LaunchpadX {
 			];
 			use self::Color::*;
 			match c {
-				White(i) => ((i*4.0) as u8).clamp(0,3),
-				Color(hue, i) => offsets[(hue as usize % 360) / 10] + 3 - ((i*4.0) as u8).clamp(0,3)
+				White(i) => ((i * 4.0) as u8).clamp(0, 3),
+				Color(hue, i) => {
+					offsets[(hue as usize % 360) / 10] + 3 - ((i * 4.0) as u8).clamp(0, 3)
+				}
 			}
 		}
 
-		assert!( (0..9).contains(&pos.0) );
-		assert!( (0..9).contains(&pos.1) );
+		assert!((0..9).contains(&pos.0));
+		assert!((0..9).contains(&pos.1));
 		use LightingMode::*;
 		let new_spec = match colorspec {
 			Off => LaunchpadInternalColorspec::Solid(0),
 			Solid(c) => LaunchpadInternalColorspec::Solid(color(c)),
-			Blink(c) => LaunchpadInternalColorspec::Alternate(0,color(c)),
+			Blink(c) => LaunchpadInternalColorspec::Alternate(0, color(c)),
 			Fade(c) => LaunchpadInternalColorspec::Fade(color(c)),
-			Alternate(c1,c2) => LaunchpadInternalColorspec::Alternate(color(c1),color(c2))
+			Alternate(c1, c2) => LaunchpadInternalColorspec::Alternate(color(c1), color(c2))
 		};
 
 		let field = &mut self.state[pos.0 as usize][pos.1 as usize];

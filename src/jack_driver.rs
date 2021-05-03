@@ -1,9 +1,9 @@
-use jack::*;
-use heapless;
-use heapless::consts::*;
-use crate::arpeggiator::{Arpeggiator, ArpeggioData, ClockMode, RepeatMode, Entry};
+use crate::arpeggiator::{Arpeggiator, ArpeggioData, ClockMode, Entry, RepeatMode};
 use crate::grid_controllers::launchpad_x::LaunchpadX;
 use crate::grid_controllers::GridController;
+use heapless;
+use heapless::consts::*;
+use jack::*;
 
 use crate::gui::GuiController; // FIXME this should not be in the jack driver
 use crate::midi::{Note, NoteEvent};
@@ -58,7 +58,7 @@ impl JackDriver {
 					heapless::Vec::from_slice(&[Entry{note: 4, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
 					heapless::Vec::from_slice(&[Entry{note: 5, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
 				]).unwrap(),
-				repeat_mode: RepeatMode::Repeat(12),
+				repeat_mode: RepeatMode::Repeat(12)
 			},
 			tempo: TempoDetector::new(),
 			channel: 0,
@@ -73,11 +73,23 @@ impl JackDriver {
 	}
 
 	pub fn autoconnect(&self, client: &jack::Client) {
-		for p in client.ports(Some(".*playback.*Launchpad X MIDI 2"), None, jack::PortFlags::empty()) {
-			client.connect_ports(&self.ui_out_port, &client.port_by_name(&p).unwrap()).expect("Failed to connect");
+		for p in client.ports(
+			Some(".*playback.*Launchpad X MIDI 2"),
+			None,
+			jack::PortFlags::empty()
+		) {
+			client
+				.connect_ports(&self.ui_out_port, &client.port_by_name(&p).unwrap())
+				.expect("Failed to connect");
 		}
-		for p in client.ports(Some(".*capture.*Launchpad X MIDI 2"), None, jack::PortFlags::empty()) {
-			client.connect_ports(&client.port_by_name(&p).unwrap(), &self.ui_in_port).expect("Failed to connect");
+		for p in client.ports(
+			Some(".*capture.*Launchpad X MIDI 2"),
+			None,
+			jack::PortFlags::empty()
+		) {
+			client
+				.connect_ports(&client.port_by_name(&p).unwrap(), &self.ui_in_port)
+				.expect("Failed to connect");
 		}
 	}
 
@@ -97,7 +109,14 @@ impl JackDriver {
 			let clock_mode = &mut self.clock_mode;
 			let time = self.time;
 			self.ui.handle_midi(ev.bytes, |ui, event| {
-				gui_controller.handle_input(event, pattern, use_external_clock, clock_mode, time_between_midiclocks, time);
+				gui_controller.handle_input(
+					event,
+					pattern,
+					use_external_clock,
+					clock_mode,
+					time_between_midiclocks,
+					time
+				);
 			});
 		}
 
@@ -106,17 +125,27 @@ impl JackDriver {
 		for event in self.in_port.iter(scope) {
 			let timestamp = self.time + event.time as u64;
 
-			if event.bytes[0] == 0xFA { // start
+			if event.bytes[0] == 0xFA {
+				// start
 				self.tick_counter = 0;
 				self.arp.reset();
 				self.tempo.reset();
 			}
-			if event.bytes[0] == 0xF8 || event.bytes[0] == 0xFA { // clock or start
+			if event.bytes[0] == 0xF8 || event.bytes[0] == 0xFA {
+				// clock or start
 				self.last_midiclock_received = self.time;
-				
+
 				if use_external_clock {
 					ui_writer.write(&event);
-					self.pending_events.push((timestamp, if event.bytes[0] == 0xF8 { NoteEvent::Clock } else { NoteEvent::Start }));
+					self.pending_events.push((
+						timestamp,
+						if event.bytes[0] == 0xF8 {
+							NoteEvent::Clock
+						}
+						else {
+							NoteEvent::Start
+						}
+					));
 					self.tick_counter += 1;
 					if self.tick_counter >= self.ticks_per_step {
 						self.tick_counter -= self.ticks_per_step;
@@ -125,10 +154,15 @@ impl JackDriver {
 						let time_per_beat = self.tempo.time_per_beat();
 
 						let pending_events = &mut self.pending_events;
-						self.arp.process_step(&self.pattern, |timestamp_steps, event| {
-							let event_timestamp = timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
-							pending_events.push((event_timestamp, event)).map_err(|_|())
-						}).expect("process_step failed (buffer overflow?)");
+						self.arp
+							.process_step(&self.pattern, |timestamp_steps, event| {
+								let event_timestamp =
+									timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
+								pending_events
+									.push((event_timestamp, event))
+									.map_err(|_| ())
+							})
+							.expect("process_step failed (buffer overflow?)");
 					}
 				}
 			}
@@ -144,8 +178,12 @@ impl JackDriver {
 			self.next_midiclock_to_send = self.next_midiclock_to_send.max(self.time);
 
 			if self.next_midiclock_to_send < self.time + scope.n_frames() as u64 {
-				ui_writer.write(&jack::RawMidi { time: (self.next_midiclock_to_send - self.time) as jack::Frames, bytes: &[0xF8] });
-				self.pending_events.push((self.next_midiclock_to_send, NoteEvent::Clock));
+				ui_writer.write(&jack::RawMidi {
+					time: (self.next_midiclock_to_send - self.time) as jack::Frames,
+					bytes: &[0xF8]
+				});
+				self.pending_events
+					.push((self.next_midiclock_to_send, NoteEvent::Clock));
 
 				self.tick_counter += 1; // FIXME duplicated code :(
 				if self.tick_counter >= self.ticks_per_step {
@@ -155,24 +193,46 @@ impl JackDriver {
 					let timestamp = self.next_midiclock_to_send;
 
 					let pending_events = &mut self.pending_events;
-					self.arp.process_step(&self.pattern, |timestamp_steps, event| {
-						let event_timestamp = timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
-						pending_events.push((event_timestamp, event)).map_err(|_|())
-					}).expect("process_step failed (buffer overflow?)");
+					self.arp
+						.process_step(&self.pattern, |timestamp_steps, event| {
+							let event_timestamp =
+								timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
+							pending_events
+								.push((event_timestamp, event))
+								.map_err(|_| ())
+						})
+						.expect("process_step failed (buffer overflow?)");
 				}
-				self.next_midiclock_to_send = self.next_midiclock_to_send + self.time_between_midiclocks;
+				self.next_midiclock_to_send =
+					self.next_midiclock_to_send + self.time_between_midiclocks;
 			}
 		}
 
 		let ui = &mut self.ui;
-		self.gui_controller.draw(&self.pattern, self.arp.step() as f32 + self.tick_counter as f32 / self.ticks_per_step as f32, use_external_clock, external_clock_present, self.clock_mode, &mut self.time_between_midiclocks, |pos, color| {
-			ui.set(pos, color, |bytes| { ui_writer.write(&jack::RawMidi { time: scope.n_frames() - 1, bytes }).expect("Writing to UI MIDI buffer failed"); });
-		});
-
+		self.gui_controller.draw(
+			&self.pattern,
+			self.arp.step() as f32 + self.tick_counter as f32 / self.ticks_per_step as f32,
+			use_external_clock,
+			external_clock_present,
+			self.clock_mode,
+			&mut self.time_between_midiclocks,
+			|pos, color| {
+				ui.set(pos, color, |bytes| {
+					ui_writer
+						.write(&jack::RawMidi {
+							time: scope.n_frames() - 1,
+							bytes
+						})
+						.expect("Writing to UI MIDI buffer failed");
+				});
+			}
+		);
 
 		let before_sort = format!("{:?}", self.pending_events);
 		self.pending_events.sort_by_key(|e| e.0);
-		let end = self.pending_events.iter()
+		let end = self
+			.pending_events
+			.iter()
 			.enumerate()
 			.filter(|(_, ev)| ev.0 >= self.time + (scope.n_frames() as u64))
 			.map(|(i, _)| i)
@@ -188,40 +248,50 @@ impl JackDriver {
 		for event in &self.pending_events[0..end] {
 			println!("event: {:?}", event);
 			let bytes: heapless::Vec<_, U4> = match event.1 {
-				NoteEvent::NoteOn(note, velo) => heapless::Vec::from_slice(&[0x90 | self.out_channel, note.0, velo]),
-				NoteEvent::NoteOff(note) => heapless::Vec::from_slice(&[0x80 | self.out_channel, note.0, 64]),
+				NoteEvent::NoteOn(note, velo) => {
+					heapless::Vec::from_slice(&[0x90 | self.out_channel, note.0, velo])
+				}
+				NoteEvent::NoteOff(note) => {
+					heapless::Vec::from_slice(&[0x80 | self.out_channel, note.0, 64])
+				}
 				NoteEvent::Clock => heapless::Vec::from_slice(&[0xF8]),
 				NoteEvent::Start => heapless::Vec::from_slice(&[0xFA])
-			}.unwrap();
-			writer.write(&jack::RawMidi {
-				time: (event.0 - self.time) as u32,
-				bytes: &bytes
-			}).expect("Writing to MIDI buffer failed");
+			}
+			.unwrap();
+			writer
+				.write(&jack::RawMidi {
+					time: (event.0 - self.time) as u32,
+					bytes: &bytes
+				})
+				.expect("Writing to MIDI buffer failed");
 		}
 
 		for i in 0..(self.pending_events.len() - end) {
-			self.pending_events[i] = self.pending_events[i+end];
+			self.pending_events[i] = self.pending_events[i + end];
 		}
-		self.pending_events.truncate(self.pending_events.len() - end);
+		self.pending_events
+			.truncate(self.pending_events.len() - end);
 
 		self.time += scope.n_frames() as u64;
-		
+
 		if self.periods == 0 {
 			self.autoconnect(client);
 		}
 		if self.periods == 10 {
 			let mut writer = self.ui_out_port.writer(scope);
-			writer.write(
-				&jack::RawMidi {
+			writer
+				.write(&jack::RawMidi {
 					time: 0,
 					bytes: &[0xF0, 0x00, 0x20, 0x29, 0x02, 0x0C, 0x0E, 0x01, 0xF7]
-				}
-			).expect("Writing to the MIDI buffer failed");
+				})
+				.expect("Writing to the MIDI buffer failed");
 
-			self.ui.force_update(|bytes| { writer.write(&jack::RawMidi{time:0, bytes}).expect("Writing to UI MIDI buffer failed"); });
+			self.ui.force_update(|bytes| {
+				writer
+					.write(&jack::RawMidi { time: 0, bytes })
+					.expect("Writing to UI MIDI buffer failed");
+			});
 		}
 		self.periods += 1;
-
 	}
 }
-

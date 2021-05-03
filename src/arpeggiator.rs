@@ -14,7 +14,7 @@ impl RepeatMode {
 			return None;
 		}
 		match *self {
-			Clamp =>
+			Clamp => {
 				if index >= 0 {
 					if index < pitches.len() as isize {
 						Some(pitches[index as usize])
@@ -32,6 +32,7 @@ impl RepeatMode {
 						Some(*pitches.first().unwrap())
 					}
 				}
+			}
 
 			Repeat(transpose) => {
 				let repetition = div_floor(index, pitches.len());
@@ -42,14 +43,13 @@ impl RepeatMode {
 				if pitches.len() == 1 {
 					Some(pitches[0])
 				}
-				else
-				{
-					let repeated_index = modulo(index, 2*pitches.len()-2);
+				else {
+					let repeated_index = modulo(index, 2 * pitches.len() - 2);
 					if repeated_index < pitches.len() {
 						Some(pitches[repeated_index])
 					}
 					else {
-						Some(pitches[2*pitches.len() - 1 - repeated_index - 1])
+						Some(pitches[2 * pitches.len() - 1 - repeated_index - 1])
 					}
 				}
 			}
@@ -79,7 +79,7 @@ impl Entry {
 
 pub struct ArpeggioData {
 	pub repeat_mode: RepeatMode,
-	pub pattern: heapless::Vec<heapless::Vec<Entry, U16>, U64>,
+	pub pattern: heapless::Vec<heapless::Vec<Entry, U16>, U64>
 }
 
 impl ArpeggioData {
@@ -90,7 +90,10 @@ impl ArpeggioData {
 		self.pattern[pos].iter().filter(move |e| e.note == note)
 	}
 	pub fn set(&mut self, pos: usize, entry: Entry) -> Result<(), Entry> {
-		if let Some(e) = self.pattern[pos].iter_mut().find(|e| e.note == entry.note && e.transpose == entry.transpose) {
+		if let Some(e) = self.pattern[pos]
+			.iter_mut()
+			.find(|e| e.note == entry.note && e.transpose == entry.transpose)
+		{
 			*e = entry;
 			Ok(())
 		}
@@ -104,7 +107,10 @@ impl ArpeggioData {
 		}
 	}
 	pub fn delete(&mut self, pos: usize, entry: Entry) {
-		while let Some(i) = self.pattern[pos].iter().position(|e| e.note == entry.note && e.transpose == entry.transpose) {
+		while let Some(i) = self.pattern[pos]
+			.iter()
+			.position(|e| e.note == entry.note && e.transpose == entry.transpose)
+		{
 			self.pattern[pos].swap_remove(i);
 		}
 	}
@@ -116,12 +122,10 @@ pub struct Arpeggiator {
 	pub intensity_length_modifier_amount: f32,
 	pub intensity_velocity_amount: f32,
 	chord: heapless::Vec<Note, U16>,
-	step: usize,
+	step: usize
 }
 
-
-
-#[derive(Copy,Clone)]
+#[derive(Copy, Clone)]
 pub enum ClockMode {
 	Internal,
 	External,
@@ -136,7 +140,7 @@ impl Arpeggiator {
 			global_velocity: 1.0,
 			intensity_velocity_amount: 1.0,
 			intensity_length_modifier_amount: 0.0,
-			chord: heapless::Vec::new(),
+			chord: heapless::Vec::new()
 		}
 	}
 
@@ -152,24 +156,34 @@ impl Arpeggiator {
 			self.chord.sort();
 		}
 	}
-	pub fn process_step<F: FnMut(f32, NoteEvent) -> Result<(),()>>(&mut self, pattern: &ArpeggioData, mut callback: F) -> Result<(),()> {
+	pub fn process_step<F: FnMut(f32, NoteEvent) -> Result<(), ()>>(
+		&mut self,
+		pattern: &ArpeggioData,
+		mut callback: F
+	) -> Result<(), ()> {
 		let current_step = self.step % pattern.pattern.len(); // pattern length could have changed, in which case we need to do this modulo again
 		self.step = (self.step + 1) % pattern.pattern.len();
 
 		for entry in pattern.pattern[current_step].iter() {
-			let length_modifier = self.global_length_modifier * (1.0 + (2.0 * entry.intensity - 1.0) * self.intensity_length_modifier_amount);
-			let velocity = (self.global_velocity * (0.5 + (entry.intensity - 0.5) * self.intensity_velocity_amount)).clamp(0.0, 1.0);
+			let length_modifier = self.global_length_modifier
+				* (1.0 + (2.0 * entry.intensity - 1.0) * self.intensity_length_modifier_amount);
+			let velocity = (self.global_velocity
+				* (0.5 + (entry.intensity - 0.5) * self.intensity_velocity_amount))
+				.clamp(0.0, 1.0);
 			let note_length = entry.actual_len(length_modifier);
-			if let Some(note) = pattern.repeat_mode.get(&self.chord, entry.note).map(|n| n.transpose(entry.transpose)).flatten() {
+			if let Some(note) = pattern
+				.repeat_mode
+				.get(&self.chord, entry.note)
+				.map(|n| n.transpose(entry.transpose))
+				.flatten()
+			{
 				callback(note_length, NoteEvent::NoteOff(note))?;
 				callback(0.0, NoteEvent::NoteOn(note, (127.0 * velocity) as u8))?;
 			}
 		}
 		Ok(())
 	}
-	pub fn reset(&mut self) {
-		self.step = 0;
-	}
+	pub fn reset(&mut self) { self.step = 0; }
 
 	pub fn step(&self) -> usize { self.step }
 }
@@ -186,5 +200,3 @@ fn div_floor(numerator: isize, denominator: usize) -> isize {
 		(numerator - denominator as isize + 1) / denominator as isize
 	}
 }
-
-
