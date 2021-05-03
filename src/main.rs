@@ -10,7 +10,6 @@ use jack_driver::JackDriver;
 use jack;
 use jack::{Control, ProcessScope};
 
-
 fn main() {
 	let client = jack::Client::new("arpfisch", jack::ClientOptions::NO_START_SERVER)
 		.expect("Failed to connect to JACK")

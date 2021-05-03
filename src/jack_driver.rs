@@ -137,15 +137,17 @@ impl JackDriver {
 
 				if use_external_clock {
 					ui_writer.write(&event).ok();
-					self.pending_events.push((
-						timestamp,
-						if event.bytes[0] == 0xF8 {
-							NoteEvent::Clock
-						}
-						else {
-							NoteEvent::Start
-						}
-					)).expect("Failed to write tick event");
+					self.pending_events
+						.push((
+							timestamp,
+							if event.bytes[0] == 0xF8 {
+								NoteEvent::Clock
+							}
+							else {
+								NoteEvent::Start
+							}
+						))
+						.expect("Failed to write tick event");
 					self.tick_counter += 1;
 					if self.tick_counter >= self.ticks_per_step {
 						self.tick_counter -= self.ticks_per_step;
@@ -178,10 +180,12 @@ impl JackDriver {
 			self.next_midiclock_to_send = self.next_midiclock_to_send.max(self.time);
 
 			if self.next_midiclock_to_send < self.time + scope.n_frames() as u64 {
-				ui_writer.write(&jack::RawMidi {
-					time: (self.next_midiclock_to_send - self.time) as jack::Frames,
-					bytes: &[0xF8]
-				}).ok();
+				ui_writer
+					.write(&jack::RawMidi {
+						time: (self.next_midiclock_to_send - self.time) as jack::Frames,
+						bytes: &[0xF8]
+					})
+					.ok();
 				self.pending_events
 					.push((self.next_midiclock_to_send, NoteEvent::Clock))
 					.expect("Failed to write tick event");
