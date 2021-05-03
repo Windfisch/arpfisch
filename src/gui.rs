@@ -1,5 +1,4 @@
 use crate::arpeggiator::*;
-use crate::grid_controllers::GridButtonEvent::Down;
 use crate::grid_controllers::*;
 use crate::tempo_detector::TempoDetector;
 
@@ -187,7 +186,7 @@ impl GuiController {
 									let mut new_entry =
 										pattern.filter(held.pos, held.note).next().unwrap().clone();
 									new_entry.transpose = octave * 12;
-									pattern.set(held.pos, new_entry);
+									pattern.set(held.pos, new_entry).ok(); // all we can do is ignore an error
 								}
 							}
 						}
@@ -281,7 +280,6 @@ impl GuiController {
 		use_external_clock: bool,
 		external_clock_present: bool,
 		clock_mode: ClockMode,
-		time_between_midiclocks: &mut u64,
 		mut set_led: impl FnMut((u8, u8), LightingMode)
 	) {
 		use GuiState::*;

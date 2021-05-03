@@ -89,6 +89,7 @@ impl ArpeggioData {
 	pub fn filter(&self, pos: usize, note: isize) -> impl Iterator<Item = &Entry> {
 		self.pattern[pos].iter().filter(move |e| e.note == note)
 	}
+	/// Returns an error if the step can hold no more events
 	pub fn set(&mut self, pos: usize, entry: Entry) -> Result<(), Entry> {
 		if let Some(e) = self.pattern[pos]
 			.iter_mut()

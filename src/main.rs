@@ -7,12 +7,9 @@ mod tempo_detector;
 
 use jack_driver::JackDriver;
 
-use heapless;
-use heapless::consts::*;
-use itertools::Itertools;
 use jack;
-use jack::{Control, MidiIn, MidiOut, Port, ProcessScope};
-use ringbuf;
+use jack::{Control, ProcessScope};
+
 
 fn main() {
 	let client = jack::Client::new("arpfisch", jack::ClientOptions::NO_START_SERVER)
@@ -23,7 +20,7 @@ fn main() {
 
 	//let (mut producer, mut consumer) = ringbuf::RingBuffer::<Message>::new(10).split();
 
-	let async_client = client
+	let _async_client = client
 		.activate_async(
 			(),
 			jack::ClosureProcessHandler::new(
@@ -36,6 +33,6 @@ fn main() {
 		.expect("Failed to activate client");
 
 	loop {
-		std::thread::sleep_ms(1000);
+		std::thread::sleep(std::time::Duration::from_secs(1));
 	}
 }

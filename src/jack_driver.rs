@@ -108,7 +108,7 @@ impl JackDriver {
 			let pattern = &mut self.pattern;
 			let clock_mode = &mut self.clock_mode;
 			let time = self.time;
-			self.ui.handle_midi(ev.bytes, |ui, event| {
+			self.ui.handle_midi(ev.bytes, |_ui, event| {
 				gui_controller.handle_input(
 					event,
 					pattern,
@@ -136,7 +136,7 @@ impl JackDriver {
 				self.last_midiclock_received = self.time;
 
 				if use_external_clock {
-					ui_writer.write(&event);
+					ui_writer.write(&event).ok();
 					self.pending_events.push((
 						timestamp,
 						if event.bytes[0] == 0xF8 {
@@ -145,7 +145,7 @@ impl JackDriver {
 						else {
 							NoteEvent::Start
 						}
-					));
+					)).expect("Failed to write tick event");
 					self.tick_counter += 1;
 					if self.tick_counter >= self.ticks_per_step {
 						self.tick_counter -= self.ticks_per_step;
@@ -181,9 +181,10 @@ impl JackDriver {
 				ui_writer.write(&jack::RawMidi {
 					time: (self.next_midiclock_to_send - self.time) as jack::Frames,
 					bytes: &[0xF8]
-				});
+				}).ok();
 				self.pending_events
-					.push((self.next_midiclock_to_send, NoteEvent::Clock));
+					.push((self.next_midiclock_to_send, NoteEvent::Clock))
+					.expect("Failed to write tick event");
 
 				self.tick_counter += 1; // FIXME duplicated code :(
 				if self.tick_counter >= self.ticks_per_step {
@@ -215,7 +216,6 @@ impl JackDriver {
 			use_external_clock,
 			external_clock_present,
 			self.clock_mode,
-			&mut self.time_between_midiclocks,
 			|pos, color| {
 				ui.set(pos, color, |bytes| {
 					ui_writer
