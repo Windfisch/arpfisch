@@ -48,6 +48,81 @@ impl GuiController {
 		}
 	}
 
+	fn handle_grid_down(&mut self, (xx,yy): (u8, u8), velo: f32, pattern: &mut ArpeggioData, time: u64) {
+		let n_panes = 8 / self.pane_height;
+		let pane = yy as usize / self.pane_height;
+		let x = xx as isize + self.first_x + 8 * (n_panes - pane - 1) as isize;
+		let y = (yy as isize % self.pane_height as isize) + self.first_y;
+		if x >= 0 && (x as usize) < pattern.pattern.len() {
+			let step_has_any_note = pattern.filter(x as usize, y).count() > 0;
+
+			#[derive(PartialEq)]
+			enum PressMode {
+				Primary,
+				SecondaryUnrelated,
+				SetLength
+			}
+			let mode =
+				if let Some(held) = self.currently_held_key {
+					if held.note == y && held.pos < x as usize {
+						PressMode::SetLength
+					}
+					else {
+						PressMode::SecondaryUnrelated
+					}
+				}
+				else {
+					self.currently_held_key = Some(HeldKey { coords: (xx,yy), pos: x as usize, note: y, time, just_set: !step_has_any_note });
+					PressMode::Primary
+				};
+
+			if !step_has_any_note {
+				match mode {
+					PressMode::Primary | PressMode::SecondaryUnrelated => {
+						pattern.set(x as usize, Entry {
+							note: y,
+							len_steps: 1,
+							intensity: velo,
+							transpose: 12 * self.current_octave
+						}).ok();
+					}
+					PressMode::SetLength => {
+						let begin_x = self.currently_held_key.unwrap().pos;
+						for entry in pattern.filter_mut(begin_x, y) {
+							entry.len_steps = (x as isize - begin_x as isize + 1) as u32;
+						}
+					}
+				}
+			}
+			else {
+				match mode {
+					PressMode::SecondaryUnrelated => {
+						pattern.delete_all(x as usize, y);
+					}
+					PressMode::Primary | PressMode::SetLength => {}
+				}
+			}
+		}
+	}
+
+	fn handle_grid_up(&mut self, (xx,yy): (u8,u8), pattern: &mut ArpeggioData, time: u64) {
+		let n_panes = 8 / self.pane_height;
+		let pane = yy as usize / self.pane_height;
+		let x = xx as isize + self.first_x + 8 * (n_panes - pane - 1) as isize;
+		let y = (yy as isize % self.pane_height as isize) + self.first_y;
+
+		let mut dont_delete = true;
+		if let Some(held) = self.currently_held_key {
+			if held.coords == (xx,yy) {
+				dont_delete = time - held.time >= 10000 || held.just_set;
+				self.currently_held_key = None;
+			}
+		}
+		if !dont_delete && x >= 0 && x < pattern.pattern.len() as isize {
+			pattern.delete_all(x as usize, y);
+		}
+	}
+
 	pub fn handle_input(&mut self, event: GridButtonEvent, pattern: &mut ArpeggioData, use_external_clock: bool, clock_mode: &mut ClockMode, time_between_midiclocks: &mut u64, time: u64) {
 		use GridButtonEvent::*;
 		use GuiState::*;
@@ -97,81 +172,12 @@ impl GuiController {
 					},
 					Down(xx, yy, velo) => {
 						if xx <= 8 && yy <= 8 {
-							let n_panes = 8 / self.pane_height;
-							let pane = yy as usize / self.pane_height;
-							let x = xx as isize + self.first_x + 8 * (n_panes - pane - 1) as isize;
-							let y = (yy as isize % self.pane_height as isize) + self.first_y;
-							if x >= 0 && (x as usize) < pattern.pattern.len() {
-								let step_has_any_note = pattern.filter(x as usize, y).count() > 0;
-
-								#[derive(PartialEq)]
-								enum PressMode {
-									Primary,
-									SecondaryUnrelated,
-									SetLength
-								}
-								let mode =
-									if let Some(held) = self.currently_held_key {
-										if held.note == y && held.pos < x as usize {
-											PressMode::SetLength
-										}
-										else {
-											PressMode::SecondaryUnrelated
-										}
-									}
-									else {
-										self.currently_held_key = Some(HeldKey { coords: (xx,yy), pos: x as usize, note: y, time, just_set: !step_has_any_note });
-										PressMode::Primary
-									};
-
-								if !step_has_any_note {
-									match mode {
-										PressMode::Primary | PressMode::SecondaryUnrelated => {
-											pattern.set(x as usize, Entry {
-												note: y,
-												len_steps: 1,
-												intensity: velo,
-												transpose: 12 * self.current_octave
-											}).ok();
-										}
-										PressMode::SetLength => {
-											let begin_x = self.currently_held_key.unwrap().pos;
-											for entry in pattern.filter_mut(begin_x, y) {
-												entry.len_steps = (x as isize - begin_x as isize + 1) as u32;
-											}
-										}
-									}
-								}
-								else {
-									match mode {
-										PressMode::SecondaryUnrelated => {
-											pattern.delete_all(x as usize, y);
-										}
-										PressMode::Primary | PressMode::SetLength => {}
-									}
-								}
-
-							}
+							self.handle_grid_down((xx,yy), velo, pattern, time);
 						}
 					},
 					Up(xx, yy, _) => {
 						if xx < 8 && yy < 8 {
-							let n_panes = 8 / self.pane_height;
-							let pane = yy as usize / self.pane_height;
-							let x = xx as isize + self.first_x + 8 * (n_panes - pane - 1) as isize;
-							let y = (yy as isize % self.pane_height as isize) + self.first_y;
-
-							let mut dont_delete = true;
-							if let Some(held) = self.currently_held_key {
-								if held.coords == (xx,yy) {
-									dont_delete = time - held.time >= 10000 || held.just_set;
-									self.currently_held_key = None;
-								}
-							}
-							if !dont_delete && x >= 0 && x < pattern.pattern.len() as isize {
-								pattern.delete_all(x as usize, y);
-							}
-
+							self.handle_grid_up((xx,yy), pattern, time);
 						}
 					}
 				}
