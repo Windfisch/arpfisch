@@ -1,7 +1,7 @@
 Arpfisch
 ========
 
-**Arpfisch** is a MIDI arpeggiator / step sequencer written in [Rust](rustlang.org)
+**Arpfisch** is a MIDI arpeggiator / step sequencer written in [Rust](https://rustlang.org)
 It is designed for use with a 8x8 grid button controller; currently, the *Novation LaunchpadX* is supported.
 
 Playback does not restart upon pressing a new chord, making it ideal for rhythmic arpeggios that lay
@@ -29,7 +29,7 @@ Its features include:
 User's guide
 ------------
 
-Currently, only the [Jack audio system](jackaudio.org) is supported. MIDI must be bridged
+Currently, only the [Jack audio system](https://jackaudio.org) is supported. MIDI must be bridged
 to JACK using a2jmidid.
 
 After startup, *arpfisch* will automatically connect to a Launchpad X, if present. You need
