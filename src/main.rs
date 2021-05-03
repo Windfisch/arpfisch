@@ -208,6 +208,13 @@ fn octave_color(octave: i32) -> Color {
 	Color::Color(octave_hue(octave), 1.0)
 }
 
+#[derive(Copy,Clone)]
+enum ClockMode {
+	Internal,
+	External,
+	Auto
+}
+
 impl GuiController {
 	pub fn new() -> GuiController {
 		GuiController {
@@ -221,7 +228,7 @@ impl GuiController {
 		}
 	}
 
-	pub fn handle_input(&mut self, event: LaunchpadEvent, pattern: &mut ArpeggioData, external_clock_present: bool, time_between_midiclocks: &mut u64, time: u64) {
+	pub fn handle_input(&mut self, event: LaunchpadEvent, pattern: &mut ArpeggioData, use_external_clock: bool, clock_mode: &mut ClockMode, time_between_midiclocks: &mut u64, time: u64) {
 		use LaunchpadEvent::*;
 		use GuiState::*;
 
@@ -366,6 +373,22 @@ impl GuiController {
 					Down(2, 2, _) => {
 						pattern.repeat_mode = RepeatMode::Repeat(12);
 					}
+					Down(7, 2, _) => {
+						if !use_external_clock {
+							self.tempo.beat(time);
+							if self.tempo.time_per_beat() <= 48000*2 && self.tempo.time_per_beat() >= 10 {
+								*time_between_midiclocks = self.tempo.time_per_beat() as u64 / 24;
+							}
+						}
+					}
+					Down(7, 1, _) => {
+						use ClockMode::*;
+						*clock_mode = match *clock_mode {
+							Internal => Auto,
+							Auto => External,
+							External => Internal
+						};
+					}
 					Down(x, y, _) => {
 						if y >= 4 {
 							let new_len = x + 8 * (8 - y - 1) + 1;
@@ -379,12 +402,6 @@ impl GuiController {
 								match pattern.repeat_mode {
 									RepeatMode::Repeat(_) => { pattern.repeat_mode = RepeatMode::Repeat((y as i32 - 1) * 12); }
 									_ => {}
-								}
-							}
-							if (x,y) == (7,2) {
-								self.tempo.beat(time);
-								if self.tempo.time_per_beat() <= 48000*2 && self.tempo.time_per_beat() >= 10 {
-									*time_between_midiclocks = self.tempo.time_per_beat() as u64 / 24;
 								}
 							}
 						}
@@ -406,7 +423,7 @@ impl GuiController {
 		}
 	}
 
-	pub fn draw(&mut self, pattern: &ArpeggioData, step: f32, external_clock_present: bool, time_between_midiclocks: &mut u64, mut set_led: impl FnMut((u8,u8), LaunchpadColorspec)) {
+	pub fn draw(&mut self, pattern: &ArpeggioData, step: f32, use_external_clock: bool, external_clock_present: bool, clock_mode: ClockMode, time_between_midiclocks: &mut u64, mut set_led: impl FnMut((u8,u8), LaunchpadColorspec)) {
 		use GuiState::*;
 		use LaunchpadColorspec::*;
 		let mut array = [[None; 8]; 8];
@@ -498,7 +515,16 @@ impl GuiController {
 				set_led((8,0), Fade(Color::Color(0, 0.74)));
 				set_led((8,1), Off);
 
-				array[7][2] = Some(Alternate(Color::Color(if external_clock_present {120} else {0}, 0.7), Color::White(1.0)));
+				array[7][2] = Some(match (use_external_clock, external_clock_present) {
+					(true, true) => Alternate(Color::Color(150, 0.7), Color::White(1.0)),
+					(true, false) => Solid(Color::Color(175, 0.0)),
+					(false, _) => Alternate(Color::Color(30, 0.7), Color::White(1.0))
+				});
+				array[7][1] = Some(Solid( match clock_mode {
+					ClockMode::Internal => Color::Color(30, 0.7),
+					ClockMode::External => Color::Color(150, 0.7),
+					ClockMode::Auto => Color::White(0.7)
+				}));
 
 				// display the pattern length
 				let pattern_len = pattern.pattern.len();
@@ -586,7 +612,8 @@ struct JackDriver {
 	periods: u64,
 	last_midiclock_received: u64,
 	next_midiclock_to_send: u64,
-	time_between_midiclocks: u64
+	time_between_midiclocks: u64,
+	clock_mode: ClockMode
 }
 
 impl JackDriver {
@@ -622,7 +649,8 @@ impl JackDriver {
 			periods: 0,
 			last_midiclock_received: 0,
 			next_midiclock_to_send: 0,
-			time_between_midiclocks: 24000 / 24
+			time_between_midiclocks: 24000 / 24,
+			clock_mode: ClockMode::Auto
 		};
 		Ok(driver)
 	}
@@ -637,14 +665,22 @@ impl JackDriver {
 	}
 
 	pub fn process(&mut self, client: &jack::Client, scope: &ProcessScope) {
+		let external_clock_present = self.time - self.last_midiclock_received <= 48000;
+		let use_external_clock = match self.clock_mode {
+			ClockMode::Internal => false,
+			ClockMode::External => true,
+			ClockMode::Auto => external_clock_present
+		};
+
 		for ev in self.ui_in_port.iter(scope) {
 			println!("event!");
 			let gui_controller = &mut self.gui_controller;
 			let time_between_midiclocks = &mut self.time_between_midiclocks;
 			let pattern = &mut self.pattern;
+			let clock_mode = &mut self.clock_mode;
 			let time = self.time;
 			self.ui.handle_midi(ev.bytes, |ui, event| {
-				gui_controller.handle_input(event, pattern, true /* FIXME */, time_between_midiclocks, time);
+				gui_controller.handle_input(event, pattern, use_external_clock, clock_mode, time_between_midiclocks, time);
 			});
 		}
 
@@ -661,20 +697,22 @@ impl JackDriver {
 			if event.bytes[0] == 0xF8 || event.bytes[0] == 0xFA { // clock or start
 				self.last_midiclock_received = self.time;
 				
-				ui_writer.write(&event);
-				self.pending_events.push((timestamp, if event.bytes[0] == 0xF8 { NoteEvent::Clock } else { NoteEvent::Start }));
-				self.tick_counter += 1;
-				if self.tick_counter >= self.ticks_per_step {
-					self.tick_counter -= self.ticks_per_step;
+				if use_external_clock {
+					ui_writer.write(&event);
+					self.pending_events.push((timestamp, if event.bytes[0] == 0xF8 { NoteEvent::Clock } else { NoteEvent::Start }));
+					self.tick_counter += 1;
+					if self.tick_counter >= self.ticks_per_step {
+						self.tick_counter -= self.ticks_per_step;
 
-					self.tempo.beat(timestamp);
-					let time_per_beat = self.tempo.time_per_beat();
+						self.tempo.beat(timestamp);
+						let time_per_beat = self.tempo.time_per_beat();
 
-					let pending_events = &mut self.pending_events;
-					self.arp.process_step(&self.pattern, |timestamp_steps, event| {
-						let event_timestamp = timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
-						pending_events.push((event_timestamp, event)).map_err(|_|())
-					}).expect("process_step failed (buffer overflow?)");
+						let pending_events = &mut self.pending_events;
+						self.arp.process_step(&self.pattern, |timestamp_steps, event| {
+							let event_timestamp = timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
+							pending_events.push((event_timestamp, event)).map_err(|_|())
+						}).expect("process_step failed (buffer overflow?)");
+					}
 				}
 			}
 			if event.bytes[0] == 0x90 | self.channel {
@@ -685,8 +723,7 @@ impl JackDriver {
 			}
 		}
 
-		let external_clock_present = self.time - self.last_midiclock_received <= 48000;
-		if !external_clock_present { // FIXME magic constant
+		if !use_external_clock {
 			self.next_midiclock_to_send = self.next_midiclock_to_send.max(self.time);
 
 			if self.next_midiclock_to_send < self.time + scope.n_frames() as u64 {
@@ -711,7 +748,7 @@ impl JackDriver {
 		}
 
 		let ui = &mut self.ui;
-		self.gui_controller.draw(&self.pattern, self.arp.step as f32 + self.tick_counter as f32 / self.ticks_per_step as f32, external_clock_present, &mut self.time_between_midiclocks, |pos, color| {
+		self.gui_controller.draw(&self.pattern, self.arp.step as f32 + self.tick_counter as f32 / self.ticks_per_step as f32, use_external_clock, external_clock_present, self.clock_mode, &mut self.time_between_midiclocks, |pos, color| {
 			ui.set(pos, color, |bytes| { ui_writer.write(&jack::RawMidi { time: scope.n_frames() - 1, bytes }).expect("Writing to UI MIDI buffer failed"); });
 		});
 
