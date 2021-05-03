@@ -1,3 +1,5 @@
+// this file is part of arpfisch. For copyright and licensing details, see main.rs
+
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Note(pub u8);
 

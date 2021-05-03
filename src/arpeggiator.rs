@@ -1,3 +1,5 @@
+// this file is part of arpfisch. For copyright and licensing details, see main.rs
+
 use crate::midi::{Note, NoteEvent};
 use heapless::{self, consts::*};
 

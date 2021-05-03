@@ -1,3 +1,5 @@
+// this file is part of arpfisch. For copyright and licensing details, see main.rs
+
 use crate::arpeggiator::*;
 use crate::grid_controllers::*;
 use crate::tempo_detector::TempoDetector;

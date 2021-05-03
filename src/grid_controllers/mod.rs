@@ -1,3 +1,5 @@
+// this file is part of arpfisch. For copyright and licensing details, see main.rs
+
 pub mod launchpad_x;
 
 /// Key up or down events. The two `u8`s indicate the position (`(0,0)` is bottom left),
