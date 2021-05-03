@@ -79,6 +79,7 @@ impl GridController for LaunchpadX {
 
 	fn set(&mut self, pos: (u8,u8), colorspec: LightingMode, mut send: impl FnMut(&[u8])) {
 		fn color(c: Color) -> u8 {
+			#[rustfmt::skip]
 			let offsets = [
 				0x04, 0x04, 0x04, 0x08, 0x08, 0x08,
 				0x0c, 0x0c, 0x0c, 0x10, 0x10, 0x10,

@@ -47,6 +47,7 @@ impl JackDriver {
 			pending_events: heapless::Vec::new(),
 			arp: Arpeggiator::new(),
 			pattern: ArpeggioData {
+				#[rustfmt::skip]
 				pattern: heapless::Vec::from_slice(&[
 					heapless::Vec::from_slice(&[Entry{note: 0, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
 					heapless::Vec::from_slice(&[Entry{note:-1, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),

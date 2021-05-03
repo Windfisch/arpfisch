@@ -1,0 +1,4 @@
+hard_tabs = true
+control_brace_style = "ClosingNextLine"
+trailing_comma = "Never"
+fn_single_line = true
