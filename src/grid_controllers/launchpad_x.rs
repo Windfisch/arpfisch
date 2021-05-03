@@ -49,9 +49,11 @@ impl LaunchpadX {
 
 impl GridController for LaunchpadX {
 	fn force_update(&self, mut send: impl FnMut(&[u8])) {
-		for i in 0..8 {
-			for j in 0..8 {
-				self.send((i,j), &mut send);
+		for i in 0..9 {
+			for j in 0..9 {
+				if (i,j) != (8,8) {
+					self.send((i,j), &mut send);
+				}
 			}
 		}
 	}
