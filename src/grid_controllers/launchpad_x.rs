@@ -56,8 +56,8 @@ impl GridController for LaunchpadX {
 		}
 	}
 
-	fn handle_midi(&mut self, message: &[u8], mut f: impl FnMut(&mut Self, LaunchpadEvent)) {
-		use LaunchpadEvent::*;
+	fn handle_midi(&mut self, message: &[u8], mut f: impl FnMut(&mut Self, GridButtonEvent)) {
+		use GridButtonEvent::*;
 		if message.len() == 3 {
 			if (message[0] == 0x90 || message[0] == 0xB0) && message[2] != 0 {
 				if let Some((x,y)) = id2coord(message[1]) {
@@ -77,7 +77,7 @@ impl GridController for LaunchpadX {
 		}
 	}
 
-	fn set(&mut self, pos: (u8,u8), colorspec: LaunchpadColorspec, mut send: impl FnMut(&[u8])) {
+	fn set(&mut self, pos: (u8,u8), colorspec: LightingMode, mut send: impl FnMut(&[u8])) {
 		fn color(c: Color) -> u8 {
 			let offsets = [
 				0x04, 0x04, 0x04, 0x08, 0x08, 0x08,
@@ -96,7 +96,7 @@ impl GridController for LaunchpadX {
 
 		assert!( (0..9).contains(&pos.0) );
 		assert!( (0..9).contains(&pos.1) );
-		use LaunchpadColorspec::*;
+		use LightingMode::*;
 		let new_spec = match colorspec {
 			Off => LaunchpadInternalColorspec::Solid(0),
 			Solid(c) => LaunchpadInternalColorspec::Solid(color(c)),

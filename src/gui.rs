@@ -1,3 +1,4 @@
+use crate::grid_controllers::GridButtonEvent::Down;
 use crate::grid_controllers::*;
 use crate::tempo_detector::TempoDetector;
 use crate::arpeggiator::*;
@@ -47,8 +48,8 @@ impl GuiController {
 		}
 	}
 
-	pub fn handle_input(&mut self, event: LaunchpadEvent, pattern: &mut ArpeggioData, use_external_clock: bool, clock_mode: &mut ClockMode, time_between_midiclocks: &mut u64, time: u64) {
-		use LaunchpadEvent::*;
+	pub fn handle_input(&mut self, event: GridButtonEvent, pattern: &mut ArpeggioData, use_external_clock: bool, clock_mode: &mut ClockMode, time_between_midiclocks: &mut u64, time: u64) {
+		use GridButtonEvent::*;
 		use GuiState::*;
 
 		println!("Handle input: {:?}", event);
@@ -242,9 +243,9 @@ impl GuiController {
 		}
 	}
 
-	pub fn draw(&mut self, pattern: &ArpeggioData, step: f32, use_external_clock: bool, external_clock_present: bool, clock_mode: ClockMode, time_between_midiclocks: &mut u64, mut set_led: impl FnMut((u8,u8), LaunchpadColorspec)) {
+	pub fn draw(&mut self, pattern: &ArpeggioData, step: f32, use_external_clock: bool, external_clock_present: bool, clock_mode: ClockMode, time_between_midiclocks: &mut u64, mut set_led: impl FnMut((u8,u8), LightingMode)) {
 		use GuiState::*;
-		use LaunchpadColorspec::*;
+		use LightingMode::*;
 		let mut array = [[None; 8]; 8];
 		match self.state {
 			Edit => {
@@ -267,7 +268,7 @@ impl GuiController {
 					set_led((i + 4,8), octave_buttons[i as usize]);
 				}
 
-				fn draw_into(array: &mut [[Option<LaunchpadColorspec>; 8]; 8], canvas_offset: (usize, usize), canvas_size: (usize, usize), pattern_offset: (isize, isize), pattern: &ArpeggioData, step: f32) {
+				fn draw_into(array: &mut [[Option<LightingMode>; 8]; 8], canvas_offset: (usize, usize), canvas_size: (usize, usize), pattern_offset: (isize, isize), pattern: &ArpeggioData, step: f32) {
 					// draw notes
 					for x in 0..canvas_size.0 {
 						let pos = x as isize + pattern_offset.0;

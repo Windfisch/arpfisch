@@ -29,7 +29,7 @@ pub struct JackDriver {
 	last_midiclock_received: u64,
 	next_midiclock_to_send: u64,
 	time_between_midiclocks: u64,
-	clock_mode: ClockMode
+	clock_mode: ClockMode // FIXME this should go to ArpeggiatorController or something like that
 }
 
 impl JackDriver {

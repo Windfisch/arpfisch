@@ -111,12 +111,12 @@ impl ArpeggioData {
 }
 
 pub struct Arpeggiator {
-	step: usize,
 	pub global_length_modifier: f32,
 	pub global_velocity: f32,
 	pub intensity_length_modifier_amount: f32,
 	pub intensity_velocity_amount: f32,
 	chord: heapless::Vec<Note, U16>,
+	step: usize,
 }
 
 

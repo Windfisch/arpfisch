@@ -3,7 +3,7 @@ pub mod launchpad_x;
 /// Key up or down events. The two `u8`s indicate the position (`(0,0)` is bottom left),
 /// the `f32` indicates the velocity in the `0.0 .. 1.0` range. (`0.5` if unsupported)
 #[derive(Clone,Copy,Debug)]
-pub enum LaunchpadEvent {
+pub enum GridButtonEvent {
 	Down(u8, u8, f32),
 	Up(u8, u8, f32),
 }
@@ -31,11 +31,11 @@ impl Color {
 	}
 }
 
-/// A grid controller's color specification. Not all controllers support all [Color]s
+/// A grid controller's lighting mode. Not all controllers support all [Color]s
 /// or blink/fade patterns. Drivers will treat unsupported patterns like the closest
 /// supported match.
 #[derive(Clone,Copy,Debug)]
-pub enum LaunchpadColorspec {
+pub enum LightingMode {
 	Off,
 	Solid(Color),
 	Blink(Color),
@@ -43,9 +43,9 @@ pub enum LaunchpadColorspec {
 	Alternate(Color, Color)
 }
 
-impl LaunchpadColorspec {
-	pub fn bright(&self) -> LaunchpadColorspec {
-		use LaunchpadColorspec::*;
+impl LightingMode {
+	pub fn bright(&self) -> LightingMode {
+		use LightingMode::*;
 		match *self {
 			Off => Solid(Color::White(0.3)),
 			Solid(c) => Solid(c.bright()),
@@ -61,13 +61,13 @@ pub trait GridController {
 	///
 	/// # Arguments
 	/// * `callback` is a user-supplied callback that gets called whenever a [LaunchpadEvent] was received.
-	fn handle_midi(&mut self, message: &[u8], callback: impl FnMut(&mut Self, LaunchpadEvent));
+	fn handle_midi(&mut self, message: &[u8], callback: impl FnMut(&mut Self, GridButtonEvent));
 
 	/// Sets a single grid field at position `pos` to the specified [`LaunchpadColorspec`]
 	///
 	/// # Arguments
 	/// * `send_fn` is a user-supplied callback that is expected to send its `&[u8]` argument as a single MIDI message to the GridController
-	fn set(&mut self, pos: (u8,u8), colorspec: LaunchpadColorspec, send_fn: impl FnMut(&[u8]));
+	fn set(&mut self, pos: (u8,u8), colorspec: LightingMode, send_fn: impl FnMut(&[u8]));
 	
 	/// Sets every field of the grid to the internally stored value. Call this after initializing or when the controller is in an unknown state.
 	///
