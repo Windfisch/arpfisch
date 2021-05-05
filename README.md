@@ -41,6 +41,8 @@ view can be navigated using the arrow buttons.
 
 ### Main view
 
+![Main view](img/pattern.jpg)
+
 A horizontal white line indicates the "zero" line, i.e. the lowest note of the input chord.
 Buttons above this line will select the higher notes of the chord (subject to *Note repetition*,
 see below), buttons below this line will select the highest, second-highest etc notes of the chord.
@@ -75,6 +77,8 @@ for octave shift selection.
 
 ### Settings menu
 
+![Settings menu](img/settings.jpg)
+
 The settings menu can be opened using the bottom button on the right button column.
 
 Its upper half allows you to set the number of steps in the pattern.
@@ -94,8 +98,18 @@ The lower half contains various settings, from left to right:
 
 ### Slider menu
 
-The slider menu is currently empty and can be opened using the second button from the bottom on
+![Slider menu](img/sliders.jpg)
+
+The slider menu can be opened using the second button from the bottom on
 the right button column.
+
+It allows to control the following settings either as slider or via pressure on the slider
+(the launchpad must be configured for polyphonic aftertouch):
+
+  - Global note length modifier (0x - 2x)
+  - Influence of the step intensity (i.e. the velocity the step was entered with) on the note length
+  - Global velocity modifier
+  - Influence of the step intensity on the note velocity
 
 License
 -------
