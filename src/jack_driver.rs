@@ -209,7 +209,7 @@ impl JackDriver {
 				if self.tick_counter >= self.ticks_per_step {
 					self.tick_counter -= self.ticks_per_step;
 
-					let time_per_beat = self.time_between_midiclocks * 24;
+					let time_per_beat = self.time_between_midiclocks * self.ticks_per_step as u64;
 					let timestamp = self.next_midiclock_to_send;
 
 					let pending_events = &mut self.pending_events;
