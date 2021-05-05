@@ -309,76 +309,6 @@ impl GuiController {
 					set_led((i + 4, 8), octave_buttons[i as usize]);
 				}
 
-				fn draw_into(
-					array: &mut [[Option<LightingMode>; 8]; 8],
-					canvas_offset: (usize, usize),
-					canvas_size: (usize, usize),
-					pattern_offset: (isize, isize),
-					pattern: &ArpeggioData,
-					step: f32
-				) {
-					// draw notes
-					for x in 0..canvas_size.0 {
-						let pos = x as isize + pattern_offset.0;
-						if pos >= 0 && pos < pattern.pattern.len() as isize {
-							for e in pattern.pattern[pos as usize].iter() {
-								let y = e.note - pattern_offset.1;
-								if (0..canvas_size.1 as isize).contains(&y) {
-									for i in 0..e.len_steps {
-										let xx = x + i as usize;
-										if xx < canvas_size.0 {
-											let foo = &mut array[xx + canvas_offset.0]
-												[y as usize + canvas_offset.1];
-											if foo.is_some() {
-												*foo = Some(Solid(Color::White(1.0)));
-											}
-											else {
-												assert!(e.transpose % 12 == 0);
-												let octave = e.transpose / 12;
-												assert!((-1..=2).contains(&octave));
-												let hue = octave_hue(octave)
-													+ (30.0 * e.intensity) as u16;
-												let color = if i == 0 {
-													Color::Color(hue, 0.25 + 0.75 * e.intensity)
-												}
-												else {
-													Color::Color(hue, 0.1)
-												};
-												*foo = Some(Solid(color));
-											}
-										}
-									}
-								}
-							}
-						}
-						else {
-							for y in 0..canvas_size.1 {
-								array[x + canvas_offset.0][y + canvas_offset.1] =
-									Some(Solid(Color::Color(0, 0.3)));
-							}
-						}
-					}
-
-					// draw horizontal zero indicator
-					let hl_y = -pattern_offset.1;
-					if (0..canvas_size.1 as isize).contains(&hl_y) {
-						for x in 0..canvas_size.0 {
-							array[x + canvas_offset.0][hl_y as usize + canvas_offset.1]
-								.get_or_insert(Solid(Color::White(0.3)));
-						}
-					}
-
-					// draw vertical step indicator
-					let hl_x = step as isize - pattern_offset.0;
-					if (0..canvas_size.0 as isize).contains(&hl_x) {
-						for y in 0..canvas_size.1 {
-							let foo =
-								&mut array[hl_x as usize + canvas_offset.0][y + canvas_offset.1];
-							*foo = Some(foo.unwrap_or(Off).bright());
-						}
-					}
-				}
-
 				let n_panes = 8 / self.pane_height;
 				for pane in 0..n_panes {
 					draw_into(
@@ -468,6 +398,76 @@ impl GuiController {
 			for y in 0..8 {
 				set_led((x, y), array[x as usize][y as usize].unwrap_or(Off));
 			}
+		}
+	}
+}
+
+fn draw_into(
+	array: &mut [[Option<LightingMode>; 8]; 8],
+	canvas_offset: (usize, usize),
+	canvas_size: (usize, usize),
+	pattern_offset: (isize, isize),
+	pattern: &ArpeggioData,
+	step: f32
+) {
+	use LightingMode::*;
+	// draw notes
+	for pos in 0..pattern.pattern.len() {
+		for e in pattern.pattern[pos as usize].iter() {
+			let y = e.note - pattern_offset.1;
+			if (0..canvas_size.1 as isize).contains(&y) {
+				for i in 0..e.len_steps {
+					let xx = pos as isize - pattern_offset.0 + i as isize;
+					if 0 <= xx && xx < canvas_size.0 as isize {
+						let xx = xx as usize;
+						let foo = &mut array[xx + canvas_offset.0][y as usize + canvas_offset.1];
+						if foo.is_some() {
+							*foo = Some(Solid(Color::White(1.0)));
+						}
+						else {
+							assert!(e.transpose % 12 == 0);
+							let octave = e.transpose / 12;
+							assert!((-1..=2).contains(&octave));
+							let hue = octave_hue(octave) + (30.0 * e.intensity) as u16;
+							let color = if i == 0 {
+								Color::Color(hue, 0.25 + 0.75 * e.intensity)
+							}
+							else {
+								Color::Color(hue, 0.1)
+							};
+							*foo = Some(Solid(color));
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// draw invalid area
+	for x in 0..canvas_size.0 {
+		let pos = x as isize + pattern_offset.0;
+		if pos < 0 || pos >= pattern.pattern.len() as isize {
+			for y in 0..canvas_size.1 {
+				array[x + canvas_offset.0][y + canvas_offset.1] = Some(Solid(Color::Color(0, 0.3)));
+			}
+		}
+	}
+
+	// draw horizontal zero indicator
+	let hl_y = -pattern_offset.1;
+	if (0..canvas_size.1 as isize).contains(&hl_y) {
+		for x in 0..canvas_size.0 {
+			array[x + canvas_offset.0][hl_y as usize + canvas_offset.1]
+				.get_or_insert(Solid(Color::White(0.3)));
+		}
+	}
+
+	// draw vertical step indicator
+	let hl_x = step as isize - pattern_offset.0;
+	if (0..canvas_size.0 as isize).contains(&hl_x) {
+		for y in 0..canvas_size.1 {
+			let foo = &mut array[hl_x as usize + canvas_offset.0][y + canvas_offset.1];
+			*foo = Some(foo.unwrap_or(Off).bright());
 		}
 	}
 }
