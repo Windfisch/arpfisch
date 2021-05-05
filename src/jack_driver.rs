@@ -222,6 +222,7 @@ impl JackDriver {
 			use_external_clock,
 			external_clock_present,
 			self.clock_mode,
+			self.time,
 			|pos, color| {
 				ui.set(pos, color, |bytes| {
 					ui_writer

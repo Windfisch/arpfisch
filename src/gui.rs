@@ -23,6 +23,8 @@ pub struct GuiController {
 	state: GuiState,
 	pane_height: usize,
 	first_x: isize,
+	target_first_x: isize,
+	last_scroll_update: u64,
 	first_y: isize,
 	currently_held_key: Option<HeldKey>,
 	current_octave: i32,
@@ -38,6 +40,8 @@ impl GuiController {
 			state: GuiState::Edit,
 			pane_height: 4,
 			first_x: 0,
+			target_first_x: 0,
+			last_scroll_update: 0,
 			first_y: 0,
 			currently_held_key: None,
 			current_octave: 0,
@@ -166,10 +170,10 @@ impl GuiController {
 						self.first_y -= 1;
 					}
 					Down(2, 8, _) => {
-						self.first_x -= 1;
+						self.target_first_x -= 8;
 					}
 					Down(3, 8, _) => {
-						self.first_x += 1;
+						self.target_first_x += 8;
 					}
 					Down(x, 8, _) => {
 						let octave = x as i32 - 5;
@@ -282,10 +286,17 @@ impl GuiController {
 		use_external_clock: bool,
 		external_clock_present: bool,
 		clock_mode: ClockMode,
+		time: u64,
 		mut set_led: impl FnMut((u8, u8), LightingMode)
 	) {
 		use GuiState::*;
 		use LightingMode::*;
+
+		if self.target_first_x != self.first_x && time >= self.last_scroll_update + 1024 {
+			self.first_x += (self.target_first_x - self.first_x).signum();
+			self.last_scroll_update = time;
+		}
+
 		let mut array = [[None; 8]; 8];
 		match self.state {
 			Edit => {
