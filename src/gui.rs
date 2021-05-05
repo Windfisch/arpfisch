@@ -147,6 +147,7 @@ impl GuiController {
 		use_external_clock: bool,
 		clock_mode: &mut ClockMode,
 		time_between_midiclocks: &mut u64,
+		fader_values: &mut [Option<(&mut f32, std::ops::RangeInclusive<f32>)>],
 		time: u64
 	) {
 		use GridButtonEvent::*;
@@ -274,6 +275,18 @@ impl GuiController {
 				Down(8, 1, _) => {
 					self.state = Edit;
 				}
+				Down(x, y, _) => {
+					if x < 8 && y < 8 {
+						for (fader_x, fader) in fader_values.iter_mut().enumerate() {
+							if let Some((value, range)) = fader {
+								if x as usize == fader_x {
+									**value = y as f32 / 7.0 * (range.end() - range.start())
+										+ range.start();
+								}
+							}
+						}
+					}
+				}
 				_ => {}
 			}
 		}
@@ -286,6 +299,7 @@ impl GuiController {
 		use_external_clock: bool,
 		external_clock_present: bool,
 		clock_mode: ClockMode,
+		fader_values: &[Option<(f32, std::ops::RangeInclusive<f32>)>],
 		time: u64,
 		mut set_led: impl FnMut((u8, u8), LightingMode)
 	) {
@@ -402,6 +416,17 @@ impl GuiController {
 			Sliders => {
 				set_led((8, 0), Off);
 				set_led((8, 1), Fade(Color::Color(0, 0.74)));
+
+				for (x, fader) in fader_values.iter().enumerate() {
+					if let Some((value, range)) = fader {
+						let leds = 1
+							+ (7.0 * (value - range.start()) / (range.end() - range.start()))
+								as usize;
+						for y in 0..leds {
+							array[x][y] = Some(Solid(Color::Color(x as u16 * 107, 0.7)));
+						}
+					}
+				}
 			}
 		}
 

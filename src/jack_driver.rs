@@ -110,6 +110,10 @@ impl JackDriver {
 			let pattern = &mut self.pattern;
 			let clock_mode = &mut self.clock_mode;
 			let time = self.time;
+			let global_length_modifier = &mut self.arp.global_length_modifier;
+			let global_velocity = &mut self.arp.global_velocity;
+			let intensity_length_modifier_amount = &mut self.arp.intensity_length_modifier_amount;
+			let intensity_velocity_amount = &mut self.arp.intensity_velocity_amount;
 			self.ui.handle_midi(ev.bytes, |_ui, event| {
 				gui_controller.handle_input(
 					event,
@@ -117,6 +121,15 @@ impl JackDriver {
 					use_external_clock,
 					clock_mode,
 					time_between_midiclocks,
+					&mut [
+						Some((global_length_modifier, 0.0..=2.0)),
+						None,
+						Some((intensity_length_modifier_amount, 0.0..=2.0)),
+						None,
+						Some((global_velocity, 0.0..=2.0)),
+						None,
+						Some((intensity_velocity_amount, 0.0..=2.0))
+					],
 					time
 				);
 			});
@@ -222,6 +235,15 @@ impl JackDriver {
 			use_external_clock,
 			external_clock_present,
 			self.clock_mode,
+			&[
+				Some((self.arp.global_length_modifier, 0.0..=2.0)),
+				None,
+				Some((self.arp.intensity_length_modifier_amount, 0.0..=2.0)),
+				None,
+				Some((self.arp.global_velocity, 0.0..=2.0)),
+				None,
+				Some((self.arp.intensity_velocity_amount, 0.0..=2.0))
+			],
 			self.time,
 			|pos, color| {
 				ui.set(pos, color, |bytes| {
