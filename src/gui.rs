@@ -28,7 +28,10 @@ pub struct GuiController {
 	first_y: isize,
 	currently_held_key: Option<HeldKey>,
 	current_octave: i32,
-	tempo: TempoDetector
+	tempo: TempoDetector,
+	down_times: [[Option<u64>; 8]; 8],
+	fader_history: [[f32; 2]; 8],
+	fader_history_last_update: u64
 }
 
 fn octave_hue(octave: i32) -> u16 { (octave + 1) as u16 * 90 }
@@ -45,7 +48,10 @@ impl GuiController {
 			first_y: 0,
 			currently_held_key: None,
 			current_octave: 0,
-			tempo: TempoDetector::new()
+			tempo: TempoDetector::new(),
+			down_times: [[None; 8]; 8],
+			fader_history: [[0.0; 2]; 8],
+			fader_history_last_update: 0
 		}
 	}
 
@@ -155,6 +161,20 @@ impl GuiController {
 
 		println!("Handle input: {:?}", event);
 
+		match event {
+			Down(x, y, _) => {
+				if x < 8 && y < 8 {
+					self.down_times[x as usize][y as usize] = Some(time);
+				}
+			}
+			Up(x, y, _) => {
+				if x < 8 && y < 8 {
+					self.down_times[x as usize][y as usize] = None;
+				}
+			}
+			_ => {}
+		}
+
 		match self.state {
 			Edit => {
 				match event {
@@ -211,6 +231,7 @@ impl GuiController {
 							self.handle_grid_up((xx, yy), pattern, time);
 						}
 					}
+					Pressure(_, _, _) => {}
 				}
 			}
 			Config => match event {
@@ -268,26 +289,57 @@ impl GuiController {
 				}
 				_ => {}
 			},
-			Sliders => match event {
-				Down(8, 0, _) => {
-					self.state = Config;
-				}
-				Down(8, 1, _) => {
-					self.state = Edit;
-				}
-				Down(x, y, _) => {
-					if x < 8 && y < 8 {
-						for (fader_x, fader) in fader_values.iter_mut().enumerate() {
-							if let Some((value, range)) = fader {
-								if x as usize == fader_x {
-									**value = y as f32 / 7.0 * (range.end() - range.start())
-										+ range.start();
+			Sliders => {
+				match event {
+					Down(8, 0, _) => {
+						self.state = Config;
+					}
+					Down(8, 1, _) => {
+						self.state = Edit;
+					}
+					Down(x, y, _) => {
+						if x < 8 && y < 8 {
+							for (fader_x, fader) in fader_values.iter_mut().enumerate() {
+								if let Some((value, range)) = fader {
+									if x as usize == fader_x {
+										**value = y as f32 / 7.0 * (range.end() - range.start())
+											+ range.start();
+										self.fader_history[x as usize] = [**value; 2];
+									}
 								}
 							}
 						}
 					}
+					Pressure(x, y, pressure) => {
+						if x < 8 && y < 8 && (x as usize) < fader_values.len() {
+							if let Some((value, range)) = fader_values[x as usize].as_mut() {
+								if let Some(down_time) = self.down_times[x as usize][y as usize] {
+									if time >= down_time + 48000 / 6 {
+										**value = pressure * (range.end() - range.start())
+											+ range.start();
+									}
+								}
+							}
+						}
+					}
+					Up(x, y, _) => {
+						if x < 8 && y < 8 && (x as usize) < fader_values.len() {
+							if let Some((value, _)) = fader_values[x as usize].as_mut() {
+								**value = self.fader_history[x as usize][0];
+							}
+						}
+					}
 				}
-				_ => {}
+
+				if time >= self.fader_history_last_update + 48000 / 40 {
+					for (i, fader) in fader_values.iter_mut().enumerate() {
+						if let Some((value, _)) = fader {
+							self.fader_history[i][0] = self.fader_history[i][1];
+							self.fader_history[i][1] = **value;
+						}
+					}
+					self.fader_history_last_update = time;
+				}
 			}
 		}
 	}

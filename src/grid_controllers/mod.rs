@@ -6,6 +6,7 @@ pub mod launchpad_x;
 /// the `f32` indicates the velocity in the `0.0 .. 1.0` range. (`0.5` if unsupported)
 #[derive(Clone, Copy, Debug)]
 pub enum GridButtonEvent {
+	Pressure(u8, u8, f32),
 	Down(u8, u8, f32),
 	Up(u8, u8, f32)
 }

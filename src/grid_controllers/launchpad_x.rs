@@ -63,6 +63,11 @@ impl GridController for LaunchpadX {
 	fn handle_midi(&mut self, message: &[u8], mut f: impl FnMut(&mut Self, GridButtonEvent)) {
 		use GridButtonEvent::*;
 		if message.len() == 3 {
+			if message[0] == 0xA0 {
+				if let Some((x, y)) = id2coord(message[1]) {
+					f(self, Pressure(x, y, message[2] as f32 / 127.0));
+				}
+			}
 			if (message[0] == 0x90 || message[0] == 0xB0) && message[2] != 0 {
 				if let Some((x, y)) = id2coord(message[1]) {
 					f(self, Down(x, y, message[2] as f32 / 127.0));
