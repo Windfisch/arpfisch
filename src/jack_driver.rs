@@ -263,7 +263,7 @@ impl JackDriver {
 		);
 
 		let before_sort = format!("{:?}", self.pending_events);
-		self.pending_events.sort_by_key(|e| e.0);
+		self.pending_events.sort();
 		let end = self
 			.pending_events
 			.iter()

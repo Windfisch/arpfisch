@@ -15,7 +15,7 @@ impl Note {
 	}
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum NoteEvent {
 	NoteOn(Note, u8),
 	NoteOff(Note),
