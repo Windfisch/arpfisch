@@ -17,9 +17,10 @@ Its features include:
   - Playing the chords **"top to bottom"** is possible by using *negative*
     note numbers.
   - View can be **split** to display more steps at once.
-  - Three different note repetition modes
+  - Three different note repetition modes.
   - **Live modulation** of the note length and the velocity, either using the
     grid buttons or via MIDI *(not yet).*
+  - **Chord hold** mode.
   - Synchronization to an external **MIDI clock**.
   - Internal MIDI **clock generation**.
   - Tap to input a tempo.
@@ -58,6 +59,10 @@ pressing the octave buttons. (Don't un-set all octaves accidentially, though...)
 
 Notes longer than a single step can be entered by holding down the start step, then tapping
 the desired end step. The note duration is indicated by dimly lit step buttons.
+
+*Chord hole mode* can be enabled by pressing the top button in the right column. When enabled,
+chords need to be only tapped shortly and they will play until a new chord is pressed, keeping
+your hands free for other work. (Purple means off, blue means on.)
 
 ### Note repetition
 
