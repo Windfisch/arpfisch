@@ -114,6 +114,8 @@ impl JackDriver {
 			let global_velocity = &mut self.arp.global_velocity;
 			let intensity_length_modifier_amount = &mut self.arp.intensity_length_modifier_amount;
 			let intensity_velocity_amount = &mut self.arp.intensity_velocity_amount;
+			let chord_hold = &mut self.arp.chord_hold;
+			let chord_settle_time = &mut self.arp.chord_settle_time;
 			self.ui.handle_midi(ev.bytes, |_ui, event| {
 				gui_controller.handle_input(
 					event,
@@ -121,6 +123,8 @@ impl JackDriver {
 					use_external_clock,
 					clock_mode,
 					time_between_midiclocks,
+					chord_hold,
+					chord_settle_time,
 					&mut [
 						Some((global_length_modifier, 0.0..=2.0)),
 						None,
@@ -172,7 +176,7 @@ impl JackDriver {
 
 						let pending_events = &mut self.pending_events;
 						self.arp
-							.process_step(&self.pattern, |timestamp_steps, event| {
+							.process_step(&self.pattern, timestamp, |timestamp_steps, event| {
 								let event_timestamp =
 									timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
 								pending_events
@@ -184,10 +188,10 @@ impl JackDriver {
 				}
 			}
 			if event.bytes[0] == 0x90 | self.channel {
-				self.arp.note_on(Note(event.bytes[1]));
+				self.arp.note_on(Note(event.bytes[1]), timestamp);
 			}
 			if event.bytes[0] == 0x80 | self.channel {
-				self.arp.note_off(Note(event.bytes[1]));
+				self.arp.note_off(Note(event.bytes[1]), timestamp);
 			}
 		}
 
@@ -214,7 +218,7 @@ impl JackDriver {
 
 					let pending_events = &mut self.pending_events;
 					self.arp
-						.process_step(&self.pattern, |timestamp_steps, event| {
+						.process_step(&self.pattern, timestamp, |timestamp_steps, event| {
 							let event_timestamp =
 								timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
 							pending_events
@@ -235,6 +239,7 @@ impl JackDriver {
 			use_external_clock,
 			external_clock_present,
 			self.clock_mode,
+			self.arp.chord_hold,
 			&[
 				Some((self.arp.global_length_modifier, 0.0..=2.0)),
 				None,

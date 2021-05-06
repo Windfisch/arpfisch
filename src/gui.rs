@@ -153,6 +153,8 @@ impl GuiController {
 		use_external_clock: bool,
 		clock_mode: &mut ClockMode,
 		time_between_midiclocks: &mut u64,
+		chord_hold: &mut bool,
+		chord_settle_time: &mut u64,
 		fader_values: &mut [Option<(&mut f32, std::ops::RangeInclusive<f32>)>],
 		time: u64
 	) {
@@ -183,6 +185,10 @@ impl GuiController {
 					}
 					Down(8, 1, _) => {
 						self.state = Sliders;
+					}
+					Down(8, 7, _) => {
+						*chord_hold = !*chord_hold;
+						*chord_settle_time = if *chord_hold { 48000 / 40 } else { 0 };
 					}
 					Down(0, 8, _) => {
 						self.first_y += 1;
@@ -351,6 +357,7 @@ impl GuiController {
 		use_external_clock: bool,
 		external_clock_present: bool,
 		clock_mode: ClockMode,
+		chord_hold: bool,
 		fader_values: &[Option<(f32, std::ops::RangeInclusive<f32>)>],
 		time: u64,
 		mut set_led: impl FnMut((u8, u8), LightingMode)
@@ -368,6 +375,15 @@ impl GuiController {
 			Edit => {
 				set_led((8, 0), Off);
 				set_led((8, 1), Off);
+				set_led(
+					(8, 7),
+					if chord_hold {
+						Solid(Color::Color(215, 0.7))
+					}
+					else {
+						Solid(Color::Color(300, 0.1))
+					}
+				);
 
 				let mut octave_buttons = [Off; 4];
 				if let Some(held) = self.currently_held_key {

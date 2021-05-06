@@ -124,7 +124,12 @@ pub struct Arpeggiator {
 	pub global_velocity: f32,
 	pub intensity_length_modifier_amount: f32,
 	pub intensity_velocity_amount: f32,
+	pub chord_settle_time: u64,
+	pub chord_hold: bool,
+	chord_hold_old: bool, // FIXME this should really not be there... use a setter instead
 	chord: heapless::Vec<Note, U16>,
+	stable_chord: heapless::Vec<Note, U16>,
+	chord_next_update_time: Option<u64>,
 	step: usize
 }
 
@@ -143,27 +148,53 @@ impl Arpeggiator {
 			global_velocity: 1.0,
 			intensity_velocity_amount: 1.0,
 			intensity_length_modifier_amount: 0.0,
-			chord: heapless::Vec::new()
+			chord: heapless::Vec::new(),
+			stable_chord: heapless::Vec::new(),
+			chord_next_update_time: None,
+			chord_settle_time: 0,
+			chord_hold: false,
+			chord_hold_old: false
 		}
 	}
 
-	pub fn note_on(&mut self, note: Note) {
+	pub fn note_on(&mut self, note: Note, time: u64) {
 		if self.chord.iter().position(|n| *n == note).is_none() {
 			self.chord.push(note).ok();
 			self.chord.sort();
+			self.chord_next_update_time = Some(time + self.chord_settle_time);
 		}
 	}
-	pub fn note_off(&mut self, note: Note) {
+	pub fn note_off(&mut self, note: Note, time: u64) {
 		if let Some(i) = self.chord.iter().position(|n| *n == note) {
 			self.chord.swap_remove(i);
 			self.chord.sort();
+			if self.chord_hold && self.chord.is_empty() {
+				self.chord_next_update_time = None;
+			}
+			else {
+				self.chord_next_update_time = Some(time + self.chord_settle_time);
+			}
 		}
 	}
 	pub fn process_step<F: FnMut(f32, NoteEvent) -> Result<(), ()>>(
 		&mut self,
 		pattern: &ArpeggioData,
+		time: u64,
 		mut callback: F
 	) -> Result<(), ()> {
+		if self.chord_hold != self.chord_hold_old {
+			if !self.chord_hold {
+				self.chord_next_update_time = Some(time);
+			}
+			self.chord_hold_old = self.chord_hold;
+		}
+		if let Some(chord_next_update_time) = self.chord_next_update_time {
+			if time >= chord_next_update_time {
+				self.stable_chord = self.chord.clone();
+				self.chord_next_update_time = None;
+			}
+		}
+
 		let current_step = self.step % pattern.pattern.len(); // pattern length could have changed, in which case we need to do this modulo again
 		self.step = (self.step + 1) % pattern.pattern.len();
 
@@ -176,7 +207,7 @@ impl Arpeggiator {
 			let note_length = entry.actual_len(length_modifier);
 			if let Some(note) = pattern
 				.repeat_mode
-				.get(&self.chord, entry.note)
+				.get(&self.stable_chord, entry.note)
 				.map(|n| n.transpose(entry.transpose))
 				.flatten()
 			{
