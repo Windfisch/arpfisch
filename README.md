@@ -1,8 +1,9 @@
 Arpfisch
 ========
 
-**Arpfisch** is a MIDI arpeggiator / step sequencer written in [Rust](https://rustlang.org)
-It is designed for use with a 8x8 grid button controller; currently, the *Novation LaunchpadX* is supported.
+**Arpfisch** is a MIDI arpeggiator / step sequencer written in [Rust](https://rustlang.org).
+It is designed for use with a 8x8 grid button controller; currently, the *Novation Launchpad X*
+is supported.
 
 Playback does not restart upon pressing a new chord, making it ideal for rhythmic arpeggios that lay
 base for a mix.
@@ -16,7 +17,7 @@ Its features include:
   - Up to 32 steps. Multiple notes and octavated notes are possible.
   - Playing the chords **"top to bottom"** is possible by using *negative*
     note numbers.
-  - View can be **split** to display more steps at once.
+  - The view can be **split** to display more steps at once.
   - Three different note repetition modes.
   - **Live modulation** of the note length and the velocity, either using the
     grid buttons or via MIDI *(not yet).*
@@ -60,7 +61,7 @@ pressing the octave buttons. (Don't un-set all octaves accidentially, though...)
 Notes longer than a single step can be entered by holding down the start step, then tapping
 the desired end step. The note duration is indicated by dimly lit step buttons.
 
-*Chord hole mode* can be enabled by pressing the top button in the right column. When enabled,
+*Chord hold mode* can be enabled by pressing the top button in the right column. When enabled,
 chords need to be only tapped shortly and they will play until a new chord is pressed, keeping
 your hands free for other work. (Purple means off, blue means on.)
 
@@ -111,10 +112,10 @@ the right button column.
 It allows to control the following settings either as slider or via pressure on the slider
 (the launchpad must be configured for polyphonic aftertouch):
 
-  - Global note length modifier (0x - 2x)
-  - Influence of the step intensity (i.e. the velocity the step was entered with) on the note length
-  - Global velocity modifier
-  - Influence of the step intensity on the note velocity
+  - Global note length modifier (0x - 2x).
+  - Influence of the step intensity (i.e. the velocity the step was entered with) on the note length.
+  - Global velocity modifier.
+  - Influence of the step intensity on the note velocity.
 
 License
 -------
