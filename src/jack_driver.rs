@@ -146,12 +146,12 @@ impl JackDriver {
 
 			if event.bytes[0] == 0xFA {
 				// start
-				self.tick_counter = 0;
+				self.tick_counter = self.ticks_per_step - 1;
 				self.arp.reset();
 				self.tempo.reset();
 			}
-			if event.bytes[0] == 0xF8 || event.bytes[0] == 0xFA {
-				// clock or start
+			if event.bytes[0] == 0xF8 {
+				// clock
 				self.last_midiclock_received = self.time;
 
 				if use_external_clock {
@@ -235,7 +235,7 @@ impl JackDriver {
 		let ui = &mut self.ui;
 		self.gui_controller.draw(
 			&self.pattern,
-			self.arp.step() as f32 + self.tick_counter as f32 / self.ticks_per_step as f32,
+			(self.arp.step() as f32 - 1.0 + self.tick_counter as f32 / self.ticks_per_step as f32).rem_euclid(self.pattern.pattern.len() as f32),
 			use_external_clock,
 			external_clock_present,
 			self.clock_mode,
