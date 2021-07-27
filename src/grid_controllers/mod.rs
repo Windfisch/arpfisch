@@ -77,4 +77,8 @@ pub trait GridController {
 	/// # Arguments
 	/// * `send_fn` is a user-supplied callback that is expected to send its `&[u8]` argument as a single MIDI message to the GridController
 	fn force_update(&self, send_fn: impl FnMut(&[u8]));
+
+	/// Performs whatever is necessary to initialize the grid controller; this might send a command to put the controller in the
+	/// right mode, or do nothing at all.
+	fn init(&self, send_fn: impl FnMut(&[u8]));
 }

@@ -17,36 +17,62 @@ pub struct JackDriver {
 	ui_in_port: Port<MidiIn>,
 	ui_out_port: Port<MidiOut>,
 	ui: LaunchpadX,
-	ticks_per_step: u32,
-	tick_counter: u32,
+	gui_controller: GuiController,
+	periods: u64,
+
+	// FIXME these should probably go to MidiDriver
 	time: u64,
 	pending_events: heapless::Vec<(u64, NoteEvent), U32>,
-	arp: Arpeggiator,
-	gui_controller: GuiController,
-	pattern: ArpeggioData,
-	tempo: TempoDetector,
-	channel: u8,
-	out_channel: u8,
-	periods: u64,
+	channel: u8, // FIXME this is currently a single channel setting for all ArpeggiatorInstances
+	out_channel: u8, // FIXME same here
 	last_midiclock_received: u64,
 	next_midiclock_to_send: u64,
 	time_between_midiclocks: u64,
-	clock_mode: ClockMode // FIXME this should go to ArpeggiatorController or something like that
+	clock_mode: ClockMode, // FIXME this should go to MasterController or something like that
+	
+	arp_instance: ArpeggiatorInstance,
 }
 
-impl JackDriver {
-	pub fn new(name: &str, client: &jack::Client) -> Result<JackDriver, jack::Error> {
-		let driver = JackDriver {
-			in_port: client.register_port(&format!("{}_in", name), MidiIn)?,
-			out_port: client.register_port(&format!("{}_out", name), MidiOut)?,
-			ui_in_port: client.register_port(&format!("{}_launchpad_in", name), MidiIn)?,
-			ui_out_port: client.register_port(&format!("{}_launchpad_out", name), MidiOut)?,
-			ui: LaunchpadX::new(),
+// FIXME this does not belong here
+struct ArpeggiatorInstance {
+	ticks_per_step: u32,
+	tick_counter: u32,
+	pattern: ArpeggioData,
+	arp: Arpeggiator,
+	tempo: TempoDetector,
+}
+
+impl ArpeggiatorInstance {
+	fn restart_transport(&mut self) {
+		self.tempo.reset();
+		self.tick_counter = self.ticks_per_step - 1;
+		self.arp.reset();
+	}
+
+	fn tick_clock(&mut self, timestamp: u64, mut callback: impl FnMut(u64, NoteEvent) -> Result<(),()>) {
+		self.tick_counter += 1;
+		if self.tick_counter >= self.ticks_per_step {
+			self.tick_counter -= self.ticks_per_step;
+
+			self.tempo.beat(timestamp);
+			let time_per_beat = self.tempo.time_per_beat();
+
+			self.arp
+				.process_step(&self.pattern, timestamp, |timestamp_steps, event| {
+					callback(timestamp + (time_per_beat as f32 * timestamp_steps) as u64, event)
+				})
+				.expect("process_step failed (buffer overflow?)");
+		}
+	}
+
+	fn currently_playing_tick(&self) -> f32 {
+		(self.arp.step() as f32 - 1.0 + self.tick_counter as f32 / self.ticks_per_step as f32).rem_euclid(self.pattern.pattern.len() as f32)
+	}
+
+	fn new() -> ArpeggiatorInstance {
+		ArpeggiatorInstance {
 			ticks_per_step: 6,
 			tick_counter: 0,
-			time: 0,
-			gui_controller: GuiController::new(),
-			pending_events: heapless::Vec::new(),
 			arp: Arpeggiator::new(),
 			pattern: ArpeggioData {
 				#[rustfmt::skip]
@@ -63,9 +89,27 @@ impl JackDriver {
 				repeat_mode: RepeatMode::Repeat(12)
 			},
 			tempo: TempoDetector::new(),
+		}
+	}
+}
+
+impl JackDriver {
+	pub fn new(name: &str, client: &jack::Client) -> Result<JackDriver, jack::Error> {
+		let driver = JackDriver {
+			in_port: client.register_port(&format!("{}_in", name), MidiIn)?,
+			out_port: client.register_port(&format!("{}_out", name), MidiOut)?,
+			ui_in_port: client.register_port(&format!("{}_launchpad_in", name), MidiIn)?,
+			ui_out_port: client.register_port(&format!("{}_launchpad_out", name), MidiOut)?,
+			ui: LaunchpadX::new(),
+			gui_controller: GuiController::new(),
+			periods: 0,
+	
+			arp_instance: ArpeggiatorInstance::new(),
+
+			time: 0,
+			pending_events: heapless::Vec::new(),
 			channel: 0,
 			out_channel: 0,
-			periods: 0,
 			last_midiclock_received: 0,
 			next_midiclock_to_send: 0,
 			time_between_midiclocks: 24000 / 24,
@@ -107,32 +151,26 @@ impl JackDriver {
 			println!("event!");
 			let gui_controller = &mut self.gui_controller;
 			let time_between_midiclocks = &mut self.time_between_midiclocks;
-			let pattern = &mut self.pattern;
 			let clock_mode = &mut self.clock_mode;
 			let time = self.time;
-			let global_length_modifier = &mut self.arp.global_length_modifier;
-			let global_velocity = &mut self.arp.global_velocity;
-			let intensity_length_modifier_amount = &mut self.arp.intensity_length_modifier_amount;
-			let intensity_velocity_amount = &mut self.arp.intensity_velocity_amount;
-			let chord_hold = &mut self.arp.chord_hold;
-			let chord_settle_time = &mut self.arp.chord_settle_time;
+			let arp_instance = &mut self.arp_instance;
 			self.ui.handle_midi(ev.bytes, |_ui, event| {
 				gui_controller.handle_input(
 					event,
-					pattern,
+					&mut arp_instance.pattern,
 					use_external_clock,
 					clock_mode,
 					time_between_midiclocks,
-					chord_hold,
-					chord_settle_time,
+					&mut arp_instance.arp.chord_hold,
+					&mut arp_instance.arp.chord_settle_time,
 					&mut [
-						Some((global_length_modifier, 0.0..=2.0)),
+						Some((&mut arp_instance.arp.global_length_modifier, 0.0..=2.0)),
 						None,
-						Some((intensity_length_modifier_amount, 0.0..=2.0)),
+						Some((&mut arp_instance.arp.intensity_length_modifier_amount, 0.0..=2.0)),
 						None,
-						Some((global_velocity, 0.0..=2.0)),
+						Some((&mut arp_instance.arp.global_velocity, 0.0..=2.0)),
 						None,
-						Some((intensity_velocity_amount, 0.0..=2.0))
+						Some((&mut arp_instance.arp.intensity_velocity_amount, 0.0..=2.0))
 					],
 					time
 				);
@@ -146,9 +184,10 @@ impl JackDriver {
 
 			if event.bytes[0] == 0xFA {
 				// start
-				self.tick_counter = self.ticks_per_step - 1;
-				self.arp.reset();
-				self.tempo.reset();
+				self.arp_instance.restart_transport();
+				self.pending_events
+					.push((timestamp, NoteEvent::Start))
+					.expect("Failed to write tick event");
 			}
 			if event.bytes[0] == 0xF8 {
 				// clock
@@ -157,41 +196,21 @@ impl JackDriver {
 				if use_external_clock {
 					ui_writer.write(&event).ok();
 					self.pending_events
-						.push((
-							timestamp,
-							if event.bytes[0] == 0xF8 {
-								NoteEvent::Clock
-							}
-							else {
-								NoteEvent::Start
-							}
-						))
+						.push((timestamp, NoteEvent::Clock))
 						.expect("Failed to write tick event");
-					self.tick_counter += 1;
-					if self.tick_counter >= self.ticks_per_step {
-						self.tick_counter -= self.ticks_per_step;
-
-						self.tempo.beat(timestamp);
-						let time_per_beat = self.tempo.time_per_beat();
-
-						let pending_events = &mut self.pending_events;
-						self.arp
-							.process_step(&self.pattern, timestamp, |timestamp_steps, event| {
-								let event_timestamp =
-									timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
-								pending_events
-									.push((event_timestamp, event))
-									.map_err(|_| ())
-							})
-							.expect("process_step failed (buffer overflow?)");
-					}
+					let pending_events = &mut self.pending_events;
+					self.arp_instance.tick_clock(timestamp, |event_timestamp, event| {
+						pending_events
+							.push((event_timestamp, event))
+							.map_err(|_| ())
+					});
 				}
 			}
 			if event.bytes[0] == 0x90 | self.channel {
-				self.arp.note_on(Note(event.bytes[1]), timestamp);
+				self.arp_instance.arp.note_on(Note(event.bytes[1]), timestamp);
 			}
 			if event.bytes[0] == 0x80 | self.channel {
-				self.arp.note_off(Note(event.bytes[1]), timestamp);
+				self.arp_instance.arp.note_off(Note(event.bytes[1]), timestamp);
 			}
 		}
 
@@ -209,24 +228,13 @@ impl JackDriver {
 					.push((self.next_midiclock_to_send, NoteEvent::Clock))
 					.expect("Failed to write tick event");
 
-				self.tick_counter += 1; // FIXME duplicated code :(
-				if self.tick_counter >= self.ticks_per_step {
-					self.tick_counter -= self.ticks_per_step;
+				let pending_events = &mut self.pending_events;
+				self.arp_instance.tick_clock(self.next_midiclock_to_send, |event_timestamp, event| {
+					pending_events
+						.push((event_timestamp, event))
+						.map_err(|_| ())
+				});
 
-					let time_per_beat = self.time_between_midiclocks * self.ticks_per_step as u64;
-					let timestamp = self.next_midiclock_to_send;
-
-					let pending_events = &mut self.pending_events;
-					self.arp
-						.process_step(&self.pattern, timestamp, |timestamp_steps, event| {
-							let event_timestamp =
-								timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
-							pending_events
-								.push((event_timestamp, event))
-								.map_err(|_| ())
-						})
-						.expect("process_step failed (buffer overflow?)");
-				}
 				self.next_midiclock_to_send =
 					self.next_midiclock_to_send + self.time_between_midiclocks;
 			}
@@ -234,20 +242,20 @@ impl JackDriver {
 
 		let ui = &mut self.ui;
 		self.gui_controller.draw(
-			&self.pattern,
-			(self.arp.step() as f32 - 1.0 + self.tick_counter as f32 / self.ticks_per_step as f32).rem_euclid(self.pattern.pattern.len() as f32),
+			&self.arp_instance.pattern,
+			self.arp_instance.currently_playing_tick(),
 			use_external_clock,
 			external_clock_present,
 			self.clock_mode,
-			self.arp.chord_hold,
+			self.arp_instance.arp.chord_hold,
 			&[
-				Some((self.arp.global_length_modifier, 0.0..=2.0)),
+				Some((self.arp_instance.arp.global_length_modifier, 0.0..=2.0)),
 				None,
-				Some((self.arp.intensity_length_modifier_amount, 0.0..=2.0)),
+				Some((self.arp_instance.arp.intensity_length_modifier_amount, 0.0..=2.0)),
 				None,
-				Some((self.arp.global_velocity, 0.0..=2.0)),
+				Some((self.arp_instance.arp.global_velocity, 0.0..=2.0)),
 				None,
-				Some((self.arp.intensity_velocity_amount, 0.0..=2.0))
+				Some((self.arp_instance.arp.intensity_velocity_amount, 0.0..=2.0))
 			],
 			self.time,
 			|pos, color| {
@@ -313,14 +321,7 @@ impl JackDriver {
 		}
 		if self.periods == 10 {
 			let mut writer = self.ui_out_port.writer(scope);
-			writer
-				.write(&jack::RawMidi {
-					time: 0,
-					bytes: &[0xF0, 0x00, 0x20, 0x29, 0x02, 0x0C, 0x0E, 0x01, 0xF7]
-				})
-				.expect("Writing to the MIDI buffer failed");
-
-			self.ui.force_update(|bytes| {
+			self.ui.init(|bytes| {
 				writer
 					.write(&jack::RawMidi { time: 0, bytes })
 					.expect("Writing to UI MIDI buffer failed");

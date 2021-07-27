@@ -50,6 +50,13 @@ impl LaunchpadX {
 }
 
 impl GridController for LaunchpadX {
+	fn init(&self, mut send: impl FnMut(&[u8])) {
+		// SysEx for switching to the user defined mode.
+		send(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x0C, 0x0E, 0x01, 0xF7]);
+
+		self.force_update(send);
+	}
+
 	fn force_update(&self, mut send: impl FnMut(&[u8])) {
 		for i in 0..9 {
 			for j in 0..9 {
