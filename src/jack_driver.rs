@@ -22,7 +22,6 @@ pub struct JackDriver {
 
 	// FIXME these should probably go to MidiDriver
 	time: u64,
-	pending_events: heapless::Vec<(u64, NoteEvent), U32>,
 	channel: u8, // FIXME this is currently a single channel setting for all ArpeggiatorInstances
 	out_channel: u8, // FIXME same here
 	last_midiclock_received: u64,
@@ -39,7 +38,8 @@ struct ArpeggiatorInstance {
 	tick_counter: u32,
 	pattern: ArpeggioData,
 	arp: Arpeggiator,
-	tempo: TempoDetector
+	tempo: TempoDetector,
+	pending_events: heapless::Vec<(u64, NoteEvent), U32>
 }
 
 impl ArpeggiatorInstance {
@@ -49,11 +49,7 @@ impl ArpeggiatorInstance {
 		self.arp.reset();
 	}
 
-	fn tick_clock(
-		&mut self,
-		timestamp: u64,
-		mut callback: impl FnMut(u64, NoteEvent) -> Result<(), ()>
-	) {
+	fn tick_clock(&mut self, timestamp: u64) {
 		self.tick_counter += 1;
 		if self.tick_counter >= self.ticks_per_step {
 			self.tick_counter -= self.ticks_per_step;
@@ -61,12 +57,14 @@ impl ArpeggiatorInstance {
 			self.tempo.beat(timestamp);
 			let time_per_beat = self.tempo.time_per_beat();
 
+			let pending_events = &mut self.pending_events;
 			self.arp
 				.process_step(&self.pattern, timestamp, |timestamp_steps, event| {
-					callback(
-						timestamp + (time_per_beat as f32 * timestamp_steps) as u64,
-						event
-					)
+					let event_timestamp =
+						timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
+					pending_events
+						.push((event_timestamp, event))
+						.map_err(|_| ())
 				})
 				.expect("process_step failed (buffer overflow?)");
 		}
@@ -75,6 +73,37 @@ impl ArpeggiatorInstance {
 	fn currently_playing_tick(&self) -> f32 {
 		(self.arp.step() as f32 - 1.0 + self.tick_counter as f32 / self.ticks_per_step as f32)
 			.rem_euclid(self.pattern.pattern.len() as f32)
+	}
+
+	fn process_pending_events(
+		&mut self,
+		time_limit: u64,
+		mut callback: impl FnMut(&[(u64, NoteEvent)])
+	) {
+		let before_sort = format!("{:?}", self.pending_events);
+		self.pending_events.sort();
+		let end = self
+			.pending_events
+			.iter()
+			.enumerate()
+			.filter(|(_, ev)| ev.0 >= time_limit)
+			.map(|(i, _)| i)
+			.next()
+			.unwrap_or(self.pending_events.len());
+
+		if end != 0 {
+			println!("==== {}", end);
+			println!("{}", before_sort);
+			println!("{:?}", self.pending_events);
+		}
+
+		callback(&self.pending_events[0..end]);
+
+		for i in 0..(self.pending_events.len() - end) {
+			self.pending_events[i] = self.pending_events[i + end];
+		}
+		self.pending_events
+			.truncate(self.pending_events.len() - end);
 	}
 
 	fn new() -> ArpeggiatorInstance {
@@ -96,7 +125,8 @@ impl ArpeggiatorInstance {
 				]).unwrap(),
 				repeat_mode: RepeatMode::Repeat(12)
 			},
-			tempo: TempoDetector::new()
+			tempo: TempoDetector::new(),
+			pending_events: heapless::Vec::new()
 		}
 	}
 }
@@ -115,7 +145,6 @@ impl JackDriver {
 			arp_instance: ArpeggiatorInstance::new(),
 
 			time: 0,
-			pending_events: heapless::Vec::new(),
 			channel: 0,
 			out_channel: 0,
 			last_midiclock_received: 0,
@@ -193,7 +222,8 @@ impl JackDriver {
 			if event.bytes[0] == 0xFA {
 				// start
 				self.arp_instance.restart_transport();
-				self.pending_events
+				self.arp_instance
+					.pending_events
 					.push((timestamp, NoteEvent::Start))
 					.expect("Failed to write tick event");
 			}
@@ -203,16 +233,11 @@ impl JackDriver {
 
 				if use_external_clock {
 					ui_writer.write(&event).ok();
-					self.pending_events
+					self.arp_instance
+						.pending_events
 						.push((timestamp, NoteEvent::Clock))
 						.expect("Failed to write tick event");
-					let pending_events = &mut self.pending_events;
-					self.arp_instance
-						.tick_clock(timestamp, |event_timestamp, event| {
-							pending_events
-								.push((event_timestamp, event))
-								.map_err(|_| ())
-						});
+					self.arp_instance.tick_clock(timestamp);
 				}
 			}
 			if event.bytes[0] == 0x90 | self.channel {
@@ -233,19 +258,12 @@ impl JackDriver {
 						bytes: &[0xF8]
 					})
 					.ok();
-				self.pending_events
+				self.arp_instance
+					.pending_events
 					.push((self.next_midiclock_to_send, NoteEvent::Clock))
 					.expect("Failed to write tick event");
 
-				let pending_events = &mut self.pending_events;
-				self.arp_instance.tick_clock(
-					self.next_midiclock_to_send,
-					|event_timestamp, event| {
-						pending_events
-							.push((event_timestamp, event))
-							.map_err(|_| ())
-					}
-				);
+				self.arp_instance.tick_clock(self.next_midiclock_to_send);
 
 				self.next_midiclock_to_send =
 					self.next_midiclock_to_send + self.time_between_midiclocks;
@@ -282,49 +300,32 @@ impl JackDriver {
 			}
 		);
 
-		let before_sort = format!("{:?}", self.pending_events);
-		self.pending_events.sort();
-		let end = self
-			.pending_events
-			.iter()
-			.enumerate()
-			.filter(|(_, ev)| ev.0 >= self.time + (scope.n_frames() as u64))
-			.map(|(i, _)| i)
-			.next()
-			.unwrap_or(self.pending_events.len());
-
 		let mut writer = self.out_port.writer(scope);
-		if end != 0 {
-			println!("==== {}", end);
-			println!("{}", before_sort);
-			println!("{:?}", self.pending_events);
-		}
-		for event in &self.pending_events[0..end] {
-			println!("event: {:?}", event);
-			let bytes: heapless::Vec<_, U4> = match event.1 {
-				NoteEvent::NoteOn(note, velo) => {
-					heapless::Vec::from_slice(&[0x90 | self.out_channel, note.0, velo])
+		let time = self.time;
+		let out_channel = self.out_channel;
+		self.arp_instance
+			.process_pending_events(self.time + (scope.n_frames() as u64), |events| {
+				for event in events {
+					println!("event: {:?}", event);
+					let bytes: heapless::Vec<_, U4> = match event.1 {
+						NoteEvent::NoteOn(note, velo) => {
+							heapless::Vec::from_slice(&[0x90 | out_channel, note.0, velo])
+						}
+						NoteEvent::NoteOff(note) => {
+							heapless::Vec::from_slice(&[0x80 | out_channel, note.0, 64])
+						}
+						NoteEvent::Clock => heapless::Vec::from_slice(&[0xF8]),
+						NoteEvent::Start => heapless::Vec::from_slice(&[0xFA])
+					}
+					.unwrap();
+					writer
+						.write(&jack::RawMidi {
+							time: (event.0 - time) as u32,
+							bytes: &bytes
+						})
+						.expect("Writing to MIDI buffer failed");
 				}
-				NoteEvent::NoteOff(note) => {
-					heapless::Vec::from_slice(&[0x80 | self.out_channel, note.0, 64])
-				}
-				NoteEvent::Clock => heapless::Vec::from_slice(&[0xF8]),
-				NoteEvent::Start => heapless::Vec::from_slice(&[0xFA])
-			}
-			.unwrap();
-			writer
-				.write(&jack::RawMidi {
-					time: (event.0 - self.time) as u32,
-					bytes: &bytes
-				})
-				.expect("Writing to MIDI buffer failed");
-		}
-
-		for i in 0..(self.pending_events.len() - end) {
-			self.pending_events[i] = self.pending_events[i + end];
-		}
-		self.pending_events
-			.truncate(self.pending_events.len() - end);
+			});
 
 		self.time += scope.n_frames() as u64;
 
