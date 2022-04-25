@@ -157,7 +157,7 @@ impl JackDriver {
 
 	pub fn autoconnect(&self, client: &jack::Client) {
 		for p in client.ports(
-			Some(".*playback.*Launchpad X MIDI 2"),
+			Some(".*playback.*Launchpad X (LPX MIDI In|MIDI 2)"),
 			None,
 			jack::PortFlags::empty()
 		) {
@@ -166,7 +166,7 @@ impl JackDriver {
 				.expect("Failed to connect");
 		}
 		for p in client.ports(
-			Some(".*capture.*Launchpad X MIDI 2"),
+			Some(".*capture.*Launchpad X (LPX MIDI In|MIDI2)"),
 			None,
 			jack::PortFlags::empty()
 		) {
