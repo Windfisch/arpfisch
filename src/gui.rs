@@ -274,23 +274,19 @@ impl GuiController {
 						External => Internal
 					};
 				}
-				Down(x, y, _) => {
-					if y >= 4 {
-						let new_len = x + 8 * (8 - y - 1) + 1;
-						pattern.pattern.resize_default(new_len as usize).ok();
-					}
-					else {
-						if x == 0 {
-							self.pane_height = 8 / (y + 1) as usize;
+				Down(x, y, _) if y >= 4 && x < 8 => {
+					let new_len = x + 8 * (8 - y - 1) + 1;
+					pattern.pattern.resize_default(new_len as usize).ok();
+				}
+				Down(0, y, _) if y < 4 => {
+					self.pane_height = 8 / (y + 1) as usize;
+				}
+				Down(3, y, _) if y < 4 => {
+					match pattern.repeat_mode {
+						RepeatMode::Repeat(_) => {
+							pattern.repeat_mode = RepeatMode::Repeat((y as i32 - 1) * 12);
 						}
-						if x == 3 {
-							match pattern.repeat_mode {
-								RepeatMode::Repeat(_) => {
-									pattern.repeat_mode = RepeatMode::Repeat((y as i32 - 1) * 12);
-								}
-								_ => {}
-							}
-						}
+						_ => {}
 					}
 				}
 				_ => {}
@@ -303,15 +299,13 @@ impl GuiController {
 					Down(8, 1, _) => {
 						self.state = Edit;
 					}
-					Down(x, y, _) => {
-						if x < 8 && y < 8 {
-							for (fader_x, fader) in fader_values.iter_mut().enumerate() {
-								if let Some((value, range)) = fader {
-									if x as usize == fader_x {
-										**value = y as f32 / 7.0 * (range.end() - range.start())
-											+ range.start();
-										self.fader_history[x as usize] = [**value; 2];
-									}
+					Down(x, y, _) if x < 8 && y < 8 => {
+						for (fader_x, fader) in fader_values.iter_mut().enumerate() {
+							if let Some((value, range)) = fader {
+								if x as usize == fader_x {
+									**value = y as f32 / 7.0 * (range.end() - range.start())
+										+ range.start();
+									self.fader_history[x as usize] = [**value; 2];
 								}
 							}
 						}
@@ -335,6 +329,7 @@ impl GuiController {
 							}
 						}
 					}
+					_ => {}
 				}
 
 				if time >= self.fader_history_last_update + 48000 / 40 {
