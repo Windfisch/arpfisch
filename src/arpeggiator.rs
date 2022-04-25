@@ -199,8 +199,9 @@ impl Arpeggiator {
 		self.step = (self.step + 1) % pattern.pattern.len();
 
 		for entry in pattern.pattern[current_step].iter() {
-			let length_modifier = self.global_length_modifier
-				* (1.0 + (2.0 * entry.intensity - 1.0) * self.intensity_length_modifier_amount);
+			let length_modifier = (self.global_length_modifier
+				* (1.0 + (2.0 * entry.intensity - 1.0) * self.intensity_length_modifier_amount))
+				.clamp(0.0, 2.0);
 			let velocity = (self.global_velocity
 				* (0.5 + (entry.intensity - 0.5) * self.intensity_velocity_amount))
 				.clamp(0.0, 1.0);
