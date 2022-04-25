@@ -177,169 +177,167 @@ impl GuiController {
 			_ => {}
 		}
 
-		match self.state {
-			Edit => {
-				match event {
-					Down(8, 0, _) => {
-						self.state = Config;
-					}
-					Down(8, 1, _) => {
-						self.state = Sliders;
-					}
-					Down(8, 7, _) => {
-						*chord_hold = !*chord_hold;
-						*chord_settle_time = if *chord_hold { 48000 / 40 } else { 0 };
-					}
-					Down(0, 8, _) => {
-						self.first_y += 1;
-					}
-					Down(1, 8, _) => {
-						self.first_y -= 1;
-					}
-					Down(2, 8, _) => {
-						self.target_first_x -= 8;
-					}
-					Down(3, 8, _) => {
-						self.target_first_x += 8;
-					}
-					Down(x, 8, _) => {
-						let octave = x as i32 - 5;
-						if let Some(held) = self.currently_held_key {
-							if pattern.filter(held.pos, held.note).count() > 0 {
-								// the step can become un-set by disabling all octaves, yet it is still held down
-								let entry_opt = pattern
-									.filter(held.pos, held.note)
-									.find(|e| e.transpose == octave * 12)
-									.cloned();
-								if let Some(entry) = entry_opt {
-									let delete_entry = entry.clone();
-									pattern.delete(held.pos, delete_entry);
+		match event {
+			Down(8, 0, _) => {
+				self.state = match self.state {
+					Config => Edit,
+					_ => Config,
+				};
+			}
+			Down(8, 1, _) => {
+				self.state = match self.state {
+					Sliders => Edit,
+					_ => Sliders,
+				};
+			}
+			Down(8, 7, _) => {
+				*chord_hold = !*chord_hold;
+				*chord_settle_time = if *chord_hold { 48000 / 40 } else { 0 };
+			}
+			event => {
+				match self.state {
+					Edit => {
+						match event {
+							Down(0, 8, _) => {
+								self.first_y += 1;
+							}
+							Down(1, 8, _) => {
+								self.first_y -= 1;
+							}
+							Down(2, 8, _) => {
+								self.target_first_x -= 8;
+							}
+							Down(3, 8, _) => {
+								self.target_first_x += 8;
+							}
+							Down(x, 8, _) => {
+								let octave = x as i32 - 5;
+								if let Some(held) = self.currently_held_key {
+									if pattern.filter(held.pos, held.note).count() > 0 {
+										// the step can become un-set by disabling all octaves, yet it is still held down
+										let entry_opt = pattern
+											.filter(held.pos, held.note)
+											.find(|e| e.transpose == octave * 12)
+											.cloned();
+										if let Some(entry) = entry_opt {
+											let delete_entry = entry.clone();
+											pattern.delete(held.pos, delete_entry);
+										}
+										else {
+											let mut new_entry =
+												pattern.filter(held.pos, held.note).next().unwrap().clone();
+											new_entry.transpose = octave * 12;
+											pattern.set(held.pos, new_entry).ok(); // all we can do is ignore an error
+										}
+									}
 								}
 								else {
-									let mut new_entry =
-										pattern.filter(held.pos, held.note).next().unwrap().clone();
-									new_entry.transpose = octave * 12;
-									pattern.set(held.pos, new_entry).ok(); // all we can do is ignore an error
+									self.current_octave = octave;
+								}
+							}
+							Down(xx, yy, velo) => {
+								if xx <= 8 && yy <= 8 {
+									self.handle_grid_down((xx, yy), velo, pattern, time);
+								}
+							}
+							Up(xx, yy, _) => {
+								if xx < 8 && yy < 8 {
+									self.handle_grid_up((xx, yy), pattern, time);
+								}
+							}
+							Pressure(_, _, _) => {}
+						}
+					}
+					Config => match event {
+						Down(2, 0, _) => {
+							pattern.repeat_mode = RepeatMode::Clamp;
+						}
+						Down(2, 1, _) => {
+							pattern.repeat_mode = RepeatMode::Mirror;
+						}
+						Down(2, 2, _) => {
+							pattern.repeat_mode = RepeatMode::Repeat(12);
+						}
+						Down(7, 2, _) => {
+							if !use_external_clock {
+								self.tempo.beat(time);
+								if self.tempo.time_per_beat() <= 48000 * 2
+									&& self.tempo.time_per_beat() >= 10
+								{
+									*time_between_midiclocks = self.tempo.time_per_beat() as u64 / 24;
 								}
 							}
 						}
-						else {
-							self.current_octave = octave;
+						Down(7, 1, _) => {
+							use ClockMode::*;
+							*clock_mode = match *clock_mode {
+								Internal => Auto,
+								Auto => External,
+								External => Internal
+							};
 						}
-					}
-					Down(xx, yy, velo) => {
-						if xx <= 8 && yy <= 8 {
-							self.handle_grid_down((xx, yy), velo, pattern, time);
+						Down(x, y, _) if (4..8).contains(&y) && x < 8 => {
+							let new_len = x + 8 * (8 - y - 1) + 1;
+							pattern.pattern.resize_default(new_len as usize).ok();
 						}
-					}
-					Up(xx, yy, _) => {
-						if xx < 8 && yy < 8 {
-							self.handle_grid_up((xx, yy), pattern, time);
+						Down(0, y, _) if y < 4 => {
+							self.pane_height = 8 / (y + 1) as usize;
 						}
-					}
-					Pressure(_, _, _) => {}
-				}
-			}
-			Config => match event {
-				Down(8, 0, _) => {
-					self.state = Edit;
-				}
-				Down(8, 1, _) => {
-					self.state = Sliders;
-				}
-				Down(2, 0, _) => {
-					pattern.repeat_mode = RepeatMode::Clamp;
-				}
-				Down(2, 1, _) => {
-					pattern.repeat_mode = RepeatMode::Mirror;
-				}
-				Down(2, 2, _) => {
-					pattern.repeat_mode = RepeatMode::Repeat(12);
-				}
-				Down(7, 2, _) => {
-					if !use_external_clock {
-						self.tempo.beat(time);
-						if self.tempo.time_per_beat() <= 48000 * 2
-							&& self.tempo.time_per_beat() >= 10
-						{
-							*time_between_midiclocks = self.tempo.time_per_beat() as u64 / 24;
-						}
-					}
-				}
-				Down(7, 1, _) => {
-					use ClockMode::*;
-					*clock_mode = match *clock_mode {
-						Internal => Auto,
-						Auto => External,
-						External => Internal
-					};
-				}
-				Down(x, y, _) if y >= 4 && x < 8 => {
-					let new_len = x + 8 * (8 - y - 1) + 1;
-					pattern.pattern.resize_default(new_len as usize).ok();
-				}
-				Down(0, y, _) if y < 4 => {
-					self.pane_height = 8 / (y + 1) as usize;
-				}
-				Down(3, y, _) if y < 4 => {
-					match pattern.repeat_mode {
-						RepeatMode::Repeat(_) => {
-							pattern.repeat_mode = RepeatMode::Repeat((y as i32 - 1) * 12);
+						Down(3, y, _) if y < 4 => {
+							match pattern.repeat_mode {
+								RepeatMode::Repeat(_) => {
+									pattern.repeat_mode = RepeatMode::Repeat((y as i32 - 1) * 12);
+								}
+								_ => {}
+							}
 						}
 						_ => {}
-					}
-				}
-				_ => {}
-			},
-			Sliders => {
-				match event {
-					Down(8, 0, _) => {
-						self.state = Config;
-					}
-					Down(8, 1, _) => {
-						self.state = Edit;
-					}
-					Down(x, y, _) if x < 8 && y < 8 => {
-						for (fader_x, fader) in fader_values.iter_mut().enumerate() {
-							if let Some((value, range)) = fader {
-								if x as usize == fader_x {
-									**value = y as f32 / 7.0 * (range.end() - range.start())
-										+ range.start();
-									self.fader_history[x as usize] = [**value; 2];
-								}
-							}
-						}
-					}
-					Pressure(x, y, pressure) => {
-						if x < 8 && y < 8 && (x as usize) < fader_values.len() {
-							if let Some((value, range)) = fader_values[x as usize].as_mut() {
-								if let Some(down_time) = self.down_times[x as usize][y as usize] {
-									if time >= down_time + 48000 / 6 {
-										**value = pressure * (range.end() - range.start())
-											+ range.start();
+					},
+					Sliders => {
+						match event {
+							Down(x, y, _) if x < 8 && y < 8 => {
+								for (fader_x, fader) in fader_values.iter_mut().enumerate() {
+									if let Some((value, range)) = fader {
+										if x as usize == fader_x {
+											**value = y as f32 / 7.0 * (range.end() - range.start())
+												+ range.start();
+											self.fader_history[x as usize] = [**value; 2];
+										}
 									}
 								}
 							}
-						}
-					}
-					Up(x, y, _) => {
-						if x < 8 && y < 8 && (x as usize) < fader_values.len() {
-							if let Some((value, _)) = fader_values[x as usize].as_mut() {
-								**value = self.fader_history[x as usize][0];
+							Pressure(x, y, pressure) => {
+								if x < 8 && y < 8 && (x as usize) < fader_values.len() {
+									if let Some((value, range)) = fader_values[x as usize].as_mut() {
+										if let Some(down_time) = self.down_times[x as usize][y as usize] {
+											if time >= down_time + 48000 / 6 {
+												**value = pressure * (range.end() - range.start())
+													+ range.start();
+											}
+										}
+									}
+								}
 							}
+							Up(x, y, _) => {
+								if x < 8 && y < 8 && (x as usize) < fader_values.len() {
+									if let Some((value, _)) = fader_values[x as usize].as_mut() {
+										**value = self.fader_history[x as usize][0];
+									}
+								}
+							}
+							_ => {}
 						}
-					}
-					_ => {}
-				}
 
-				if time >= self.fader_history_last_update + 48000 / 40 {
-					for (i, fader) in fader_values.iter_mut().enumerate() {
-						if let Some((value, _)) = fader {
-							self.fader_history[i][0] = self.fader_history[i][1];
-							self.fader_history[i][1] = **value;
+						if time >= self.fader_history_last_update + 48000 / 40 {
+							for (i, fader) in fader_values.iter_mut().enumerate() {
+								if let Some((value, _)) = fader {
+									self.fader_history[i][0] = self.fader_history[i][1];
+									self.fader_history[i][1] = **value;
+								}
+							}
+							self.fader_history_last_update = time;
 						}
 					}
-					self.fader_history_last_update = time;
 				}
 			}
 		}
@@ -366,19 +364,19 @@ impl GuiController {
 		}
 
 		let mut array = [[None; 8]; 8];
+		set_led(
+			(8, 7),
+			if chord_hold {
+				Solid(Color::Color(215, 0.7))
+			}
+			else {
+				Solid(Color::Color(300, 0.1))
+			}
+		);
 		match self.state {
 			Edit => {
 				set_led((8, 0), Off);
 				set_led((8, 1), Off);
-				set_led(
-					(8, 7),
-					if chord_hold {
-						Solid(Color::Color(215, 0.7))
-					}
-					else {
-						Solid(Color::Color(300, 0.1))
-					}
-				);
 
 				let mut octave_buttons = [Off; 4];
 				if let Some(held) = self.currently_held_key {
