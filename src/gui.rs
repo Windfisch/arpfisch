@@ -181,13 +181,13 @@ impl GuiController {
 			Down(8, 0, _) => {
 				self.state = match self.state {
 					Config => Edit,
-					_ => Config,
+					_ => Config
 				};
 			}
 			Down(8, 1, _) => {
 				self.state = match self.state {
 					Sliders => Edit,
-					_ => Sliders,
+					_ => Sliders
 				};
 			}
 			Down(8, 7, _) => {
@@ -224,8 +224,11 @@ impl GuiController {
 											pattern.delete(held.pos, delete_entry);
 										}
 										else {
-											let mut new_entry =
-												pattern.filter(held.pos, held.note).next().unwrap().clone();
+											let mut new_entry = pattern
+												.filter(held.pos, held.note)
+												.next()
+												.unwrap()
+												.clone();
 											new_entry.transpose = octave * 12;
 											pattern.set(held.pos, new_entry).ok(); // all we can do is ignore an error
 										}
@@ -264,7 +267,8 @@ impl GuiController {
 								if self.tempo.time_per_beat() <= 48000 * 2
 									&& self.tempo.time_per_beat() >= 10
 								{
-									*time_between_midiclocks = self.tempo.time_per_beat() as u64 / 24;
+									*time_between_midiclocks =
+										self.tempo.time_per_beat() as u64 / 24;
 								}
 							}
 						}
@@ -283,14 +287,12 @@ impl GuiController {
 						Down(0, y, _) if y < 4 => {
 							self.pane_height = 8 / (y + 1) as usize;
 						}
-						Down(3, y, _) if y < 4 => {
-							match pattern.repeat_mode {
-								RepeatMode::Repeat(_) => {
-									pattern.repeat_mode = RepeatMode::Repeat((y as i32 - 1) * 12);
-								}
-								_ => {}
+						Down(3, y, _) if y < 4 => match pattern.repeat_mode {
+							RepeatMode::Repeat(_) => {
+								pattern.repeat_mode = RepeatMode::Repeat((y as i32 - 1) * 12);
 							}
-						}
+							_ => {}
+						},
 						_ => {}
 					},
 					Sliders => {
@@ -299,8 +301,9 @@ impl GuiController {
 								for (fader_x, fader) in fader_values.iter_mut().enumerate() {
 									if let Some((value, range)) = fader {
 										if x as usize == fader_x {
-											**value = y as f32 / 7.0 * (range.end() - range.start())
-												+ range.start();
+											**value = y as f32 / 7.0
+												* (range.end() - range.start()) + range
+												.start();
 											self.fader_history[x as usize] = [**value; 2];
 										}
 									}
@@ -308,8 +311,11 @@ impl GuiController {
 							}
 							Pressure(x, y, pressure) => {
 								if x < 8 && y < 8 && (x as usize) < fader_values.len() {
-									if let Some((value, range)) = fader_values[x as usize].as_mut() {
-										if let Some(down_time) = self.down_times[x as usize][y as usize] {
+									if let Some((value, range)) = fader_values[x as usize].as_mut()
+									{
+										if let Some(down_time) =
+											self.down_times[x as usize][y as usize]
+										{
 											if time >= down_time + 48000 / 6 {
 												**value = pressure * (range.end() - range.start())
 													+ range.start();

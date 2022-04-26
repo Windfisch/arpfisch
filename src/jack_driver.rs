@@ -203,7 +203,10 @@ impl JackDriver {
 					&mut [
 						Some((&mut arp_instance.arp.global_length_modifier, 0.0..=2.0)),
 						None,
-						Some((&mut arp_instance.arp.intensity_length_modifier_amount, 0.0..=2.0)),
+						Some((
+							&mut arp_instance.arp.intensity_length_modifier_amount,
+							0.0..=2.0
+						)),
 						None,
 						Some((&mut arp_instance.arp.global_velocity, 0.0..=2.0)),
 						None,
@@ -241,10 +244,14 @@ impl JackDriver {
 				}
 			}
 			if event.bytes[0] == 0x90 | self.channel {
-				self.arp_instance.arp.note_on(Note(event.bytes[1]), timestamp);
+				self.arp_instance
+					.arp
+					.note_on(Note(event.bytes[1]), timestamp);
 			}
 			if event.bytes[0] == 0x80 | self.channel {
-				self.arp_instance.arp.note_off(Note(event.bytes[1]), timestamp);
+				self.arp_instance
+					.arp
+					.note_off(Note(event.bytes[1]), timestamp);
 			}
 		}
 
@@ -281,7 +288,10 @@ impl JackDriver {
 			&[
 				Some((self.arp_instance.arp.global_length_modifier, 0.0..=2.0)),
 				None,
-				Some((self.arp_instance.arp.intensity_length_modifier_amount, 0.0..=2.0)),
+				Some((
+					self.arp_instance.arp.intensity_length_modifier_amount,
+					0.0..=2.0
+				)),
 				None,
 				Some((self.arp_instance.arp.global_velocity, 0.0..=2.0)),
 				None,
