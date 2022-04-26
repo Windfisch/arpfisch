@@ -62,6 +62,8 @@ impl GuiController {
 		pattern: &mut ArpeggioData,
 		time: u64
 	) {
+		assert!(xx < 8 && yy < 8);
+
 		let n_panes = 8 / self.pane_height;
 		let pane = yy as usize / self.pane_height;
 		let x = xx as isize + self.first_x + 8 * (n_panes - pane - 1) as isize;
@@ -129,6 +131,8 @@ impl GuiController {
 	}
 
 	fn handle_grid_up(&mut self, (xx, yy): (u8, u8), pattern: &mut ArpeggioData, time: u64) {
+		assert!(xx < 8 && yy < 8);
+
 		let n_panes = 8 / self.pane_height;
 		let pane = yy as usize / self.pane_height;
 		let x = xx as isize + self.first_x + 8 * (n_panes - pane - 1) as isize;
@@ -238,17 +242,13 @@ impl GuiController {
 									self.current_octave = octave;
 								}
 							}
-							Down(xx, yy, velo) => {
-								if xx <= 8 && yy <= 8 {
-									self.handle_grid_down((xx, yy), velo, pattern, time);
-								}
+							Down(xx, yy, velo) if xx < 8 && yy < 8 => {
+								self.handle_grid_down((xx, yy), velo, pattern, time);
 							}
-							Up(xx, yy, _) => {
-								if xx < 8 && yy < 8 {
-									self.handle_grid_up((xx, yy), pattern, time);
-								}
+							Up(xx, yy, _) if xx < 8 && yy < 8 => {
+								self.handle_grid_up((xx, yy), pattern, time);
 							}
-							Pressure(_, _, _) => {}
+							_ => {}
 						}
 					}
 					Config => match event {
