@@ -30,6 +30,7 @@ pub struct GuiController {
 	current_octave: i32,
 	tempo: TempoDetector,
 	down_times: [[Option<u64>; 8]; 8],
+	state_down_time: u64,
 	fader_history: [[f32; 2]; 8],
 	fader_history_last_update: u64
 }
@@ -51,7 +52,8 @@ impl GuiController {
 			tempo: TempoDetector::new(),
 			down_times: [[None; 8]; 8],
 			fader_history: [[0.0; 2]; 8],
-			fader_history_last_update: 0
+			fader_history_last_update: 0,
+			state_down_time: 0
 		}
 	}
 
@@ -183,16 +185,34 @@ impl GuiController {
 
 		match event {
 			Down(8, 0, _) => {
+				self.state_down_time = time;
 				self.state = match self.state {
 					Config => Edit,
 					_ => Config
 				};
 			}
+			Up(8, 0, _) => {
+				match self.state {
+					Config => if time > self.state_down_time + 48000 / 3 {
+						self.state = Edit
+					}
+					_ => ()
+				}
+			}
 			Down(8, 1, _) => {
+				self.state_down_time = time;
 				self.state = match self.state {
 					Sliders => Edit,
 					_ => Sliders
 				};
+			}
+			Up(8, 1, _) => {
+				match self.state {
+					Sliders => if time > self.state_down_time + 48000 / 3 {
+						self.state = Edit
+					}
+					_ => ()
+				}
 			}
 			Down(8, 7, _) => {
 				*chord_hold = !*chord_hold;
