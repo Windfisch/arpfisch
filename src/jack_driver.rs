@@ -1,6 +1,6 @@
 // this file is part of arpfisch. For copyright and licensing details, see main.rs
 
-use crate::arpeggiator::{Arpeggiator, ArpeggioData, ClockMode, Entry, RepeatMode};
+use crate::arpeggiator::{Arpeggiator, ArpeggioData, ArpeggiatorInstance, ClockMode, Entry, RepeatMode};
 use crate::grid_controllers::launchpad_x::LaunchpadX;
 use crate::grid_controllers::GridController;
 use heapless;
@@ -9,7 +9,6 @@ use jack::*;
 
 use crate::gui::GuiController; // FIXME this should not be in the jack driver
 use crate::midi::{Note, NoteEvent};
-use crate::tempo_detector::TempoDetector;
 
 pub struct JackDriver {
 	in_port: Port<MidiIn>,
@@ -30,105 +29,6 @@ pub struct JackDriver {
 	clock_mode: ClockMode, // FIXME this should go to MasterController or something like that
 
 	arp_instance: ArpeggiatorInstance
-}
-
-// FIXME this does not belong here
-struct ArpeggiatorInstance {
-	ticks_per_step: u32,
-	tick_counter: u32,
-	pattern: ArpeggioData,
-	arp: Arpeggiator,
-	tempo: TempoDetector,
-	pending_events: heapless::Vec<(u64, NoteEvent), U32>
-}
-
-impl ArpeggiatorInstance {
-	fn restart_transport(&mut self) {
-		self.tempo.reset();
-		self.tick_counter = self.ticks_per_step - 1;
-		self.arp.reset();
-	}
-
-	fn tick_clock(&mut self, timestamp: u64) {
-		self.tick_counter += 1;
-		if self.tick_counter >= self.ticks_per_step {
-			self.tick_counter -= self.ticks_per_step;
-
-			self.tempo.beat(timestamp);
-			let time_per_beat = self.tempo.time_per_beat();
-
-			let pending_events = &mut self.pending_events;
-			self.arp
-				.process_step(&self.pattern, timestamp, |timestamp_steps, event| {
-					let event_timestamp =
-						timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
-					pending_events
-						.push((event_timestamp, event))
-						.map_err(|_| ())
-				})
-				.expect("process_step failed (buffer overflow?)");
-		}
-	}
-
-	fn currently_playing_tick(&self) -> f32 {
-		(self.arp.step() as f32 - 1.0 + self.tick_counter as f32 / self.ticks_per_step as f32)
-			.rem_euclid(self.pattern.pattern.len() as f32)
-	}
-
-	fn process_pending_events(
-		&mut self,
-		time_limit: u64,
-		mut callback: impl FnMut(&[(u64, NoteEvent)])
-	) {
-		let before_sort = format!("{:?}", self.pending_events);
-		self.pending_events.sort();
-		let end = self
-			.pending_events
-			.iter()
-			.enumerate()
-			.filter(|(_, ev)| ev.0 >= time_limit)
-			.map(|(i, _)| i)
-			.next()
-			.unwrap_or(self.pending_events.len());
-
-		if end != 0 {
-			println!("==== {}", end);
-			println!("{}", before_sort);
-			println!("{:?}", self.pending_events);
-		}
-
-		callback(&self.pending_events[0..end]);
-
-		for i in 0..(self.pending_events.len() - end) {
-			self.pending_events[i] = self.pending_events[i + end];
-		}
-		self.pending_events
-			.truncate(self.pending_events.len() - end);
-	}
-
-	fn new() -> ArpeggiatorInstance {
-		ArpeggiatorInstance {
-			ticks_per_step: 6,
-			tick_counter: 0,
-			arp: Arpeggiator::new(),
-			pattern: ArpeggioData {
-				#[rustfmt::skip]
-				pattern: heapless::Vec::from_slice(&[
-					heapless::Vec::from_slice(&[Entry{note: 0, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note:-1, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 0, len_steps: 1, intensity: 0.5, transpose:12 }]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 1, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 2, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 3, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 4, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 5, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
-				]).unwrap(),
-				repeat_mode: RepeatMode::Repeat(12)
-			},
-			tempo: TempoDetector::new(),
-			pending_events: heapless::Vec::new()
-		}
-	}
 }
 
 impl JackDriver {
@@ -226,8 +126,7 @@ impl JackDriver {
 				// start
 				self.arp_instance.restart_transport();
 				self.arp_instance
-					.pending_events
-					.push((timestamp, NoteEvent::Start))
+					.add_pending_event(timestamp, NoteEvent::Start)
 					.expect("Failed to write tick event");
 			}
 			if event.bytes[0] == 0xF8 {
@@ -237,8 +136,7 @@ impl JackDriver {
 				if use_external_clock {
 					ui_writer.write(&event).ok();
 					self.arp_instance
-						.pending_events
-						.push((timestamp, NoteEvent::Clock))
+						.add_pending_event(timestamp, NoteEvent::Clock)
 						.expect("Failed to write tick event");
 					self.arp_instance.tick_clock(timestamp);
 				}
@@ -266,8 +164,7 @@ impl JackDriver {
 					})
 					.ok();
 				self.arp_instance
-					.pending_events
-					.push((self.next_midiclock_to_send, NoteEvent::Clock))
+					.add_pending_event(self.next_midiclock_to_send, NoteEvent::Clock)
 					.expect("Failed to write tick event");
 
 				self.arp_instance.tick_clock(self.next_midiclock_to_send);
