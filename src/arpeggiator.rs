@@ -226,7 +226,6 @@ impl Arpeggiator {
 	pub fn step(&self) -> usize { self.step }
 }
 
-
 pub struct ArpeggiatorInstance {
 	ticks_per_step: u32,
 	tick_counter: u32,
@@ -244,9 +243,7 @@ impl ArpeggiatorInstance {
 		self.arp.reset();
 	}
 
-	pub fn active_pattern(&self) -> &ArpeggioData {
-		&self.patterns[self.active_pattern]
-	}
+	pub fn active_pattern(&self) -> &ArpeggioData { &self.patterns[self.active_pattern] }
 
 	pub fn tick_clock(&mut self, timestamp: u64) {
 		self.tick_counter += 1;
@@ -258,13 +255,17 @@ impl ArpeggiatorInstance {
 
 			let pending_events = &mut self.pending_events;
 			self.arp
-				.process_step(&self.patterns[self.active_pattern], timestamp, |timestamp_steps, event| {
-					let event_timestamp =
-						timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
-					pending_events
-						.push((event_timestamp, event))
-						.map_err(|_| ())
-				})
+				.process_step(
+					&self.patterns[self.active_pattern],
+					timestamp,
+					|timestamp_steps, event| {
+						let event_timestamp =
+							timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
+						pending_events
+							.push((event_timestamp, event))
+							.map_err(|_| ())
+					}
+				)
 				.expect("process_step failed (buffer overflow?)");
 		}
 	}
@@ -274,10 +275,8 @@ impl ArpeggiatorInstance {
 			.rem_euclid(self.active_pattern().pattern.len() as f32)
 	}
 
-	pub fn add_pending_event(&mut self, timestamp: u64, event: NoteEvent) -> Result<(),()> {
-		self.pending_events
-			.push((timestamp, event))
-			.map_err(|_| ())
+	pub fn add_pending_event(&mut self, timestamp: u64, event: NoteEvent) -> Result<(), ()> {
+		self.pending_events.push((timestamp, event)).map_err(|_| ())
 	}
 
 	/// Calls `callback` with all pending events that occur earlier than `time_limit`,
@@ -286,7 +285,7 @@ impl ArpeggiatorInstance {
 		&mut self,
 		time_limit: u64,
 		mut callback: impl FnMut(&[(u64, NoteEvent)])
-	 ) {
+	) {
 		let before_sort = format!("{:?}", self.pending_events);
 		self.pending_events.sort();
 		let end = self
@@ -302,31 +301,32 @@ impl ArpeggiatorInstance {
 			println!("==== {}", end);
 			println!("{}", before_sort);
 			println!("{:?}", self.pending_events);
-	 	}
+		}
 
 		callback(&self.pending_events[0..end]);
 
 		for i in 0..(self.pending_events.len() - end) {
 			self.pending_events[i] = self.pending_events[i + end];
-	 	}
+		}
 		self.pending_events
 			.truncate(self.pending_events.len() - end);
 	}
 
 	pub fn new() -> ArpeggiatorInstance {
 		let pattern = ArpeggioData {
-					pattern: heapless::Vec::from_slice(&[
-						heapless::Vec::new(),
-						heapless::Vec::new(),
-						heapless::Vec::new(),
-						heapless::Vec::new(),
-						heapless::Vec::new(),
-						heapless::Vec::new(),
-						heapless::Vec::new(),
-						heapless::Vec::new(),
-					]).unwrap(),
-					repeat_mode: RepeatMode::Repeat(12)
-				};
+			pattern: heapless::Vec::from_slice(&[
+				heapless::Vec::new(),
+				heapless::Vec::new(),
+				heapless::Vec::new(),
+				heapless::Vec::new(),
+				heapless::Vec::new(),
+				heapless::Vec::new(),
+				heapless::Vec::new(),
+				heapless::Vec::new()
+			])
+			.unwrap(),
+			repeat_mode: RepeatMode::Repeat(12)
+		};
 		ArpeggiatorInstance {
 			ticks_per_step: 6,
 			tick_counter: 0,
@@ -339,16 +339,14 @@ impl ArpeggiatorInstance {
 				pattern.clone(),
 				pattern.clone(),
 				pattern.clone(),
-				pattern.clone(),
+				pattern.clone()
 			],
 			active_pattern: 0,
 			tempo: TempoDetector::new(),
 			pending_events: heapless::Vec::new()
 		}
-	} 
+	}
 }
-
-
 
 fn modulo(numerator: isize, denominator: usize) -> usize {
 	return ((numerator % (denominator as isize)) + denominator as isize) as usize % denominator;

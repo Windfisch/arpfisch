@@ -194,14 +194,14 @@ impl GuiController {
 					_ => Config
 				};
 			}
-			Up(8, 0, _) => {
-				match self.state {
-					Config => if time > self.state_down_time + 48000 / 3 {
+			Up(8, 0, _) => match self.state {
+				Config => {
+					if time > self.state_down_time + 48000 / 3 {
 						self.state = Edit
 					}
-					_ => ()
 				}
-			}
+				_ => ()
+			},
 			Down(8, 1, _) => {
 				self.state_down_time = time;
 				self.state = match self.state {
@@ -209,14 +209,14 @@ impl GuiController {
 					_ => Sliders
 				};
 			}
-			Up(8, 1, _) => {
-				match self.state {
-					Sliders => if time > self.state_down_time + 48000 / 3 {
+			Up(8, 1, _) => match self.state {
+				Sliders => {
+					if time > self.state_down_time + 48000 / 3 {
 						self.state = Edit
 					}
-					_ => ()
 				}
-			}
+				_ => ()
+			},
 			Down(8, 7, _) => {
 				*chord_hold = !*chord_hold;
 				*chord_settle_time = if *chord_hold { 48000 / 40 } else { 0 };

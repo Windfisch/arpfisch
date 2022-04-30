@@ -1,6 +1,8 @@
 // this file is part of arpfisch. For copyright and licensing details, see main.rs
 
-use crate::arpeggiator::{Arpeggiator, ArpeggioData, ArpeggiatorInstance, ClockMode, Entry, RepeatMode};
+use crate::arpeggiator::{
+	Arpeggiator, ArpeggiatorInstance, ArpeggioData, ClockMode, Entry, RepeatMode
+};
 use crate::grid_controllers::launchpad_x::LaunchpadX;
 use crate::grid_controllers::GridController;
 use heapless;
