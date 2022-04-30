@@ -383,13 +383,11 @@ impl GuiController {
 							self.fader_history_last_update = time;
 						}
 					}
-					PatternSelect => {
-						match event {
-							Down(x, y, _) if x < 8 && y < 8 => {
-								*active_pattern = x as usize;
-							}
-							_ => ()
+					PatternSelect => match event {
+						Down(x, y, _) if x < 8 && y < 8 => {
+							*active_pattern = x as usize;
 						}
+						_ => ()
 					}
 				}
 			}
@@ -428,7 +426,7 @@ impl GuiController {
 			}
 		);
 		match self.state {
-			Edit =>  {
+			Edit => {
 				set_led((8, 0), Off);
 				set_led((8, 1), Off);
 				set_led((8, 2), Off);
