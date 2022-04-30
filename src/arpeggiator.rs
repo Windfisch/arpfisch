@@ -4,6 +4,7 @@ use crate::midi::{Note, NoteEvent};
 use crate::tempo_detector::TempoDetector;
 use heapless::{self, consts::*};
 
+#[derive(Clone)]
 pub enum RepeatMode {
 	Clamp,
 	Repeat(i32),
@@ -80,6 +81,7 @@ impl Entry {
 	}
 }
 
+#[derive(Clone)]
 pub struct ArpeggioData {
 	pub repeat_mode: RepeatMode,
 	pub pattern: heapless::Vec<heapless::Vec<Entry, U16>, U64>
@@ -228,7 +230,8 @@ impl Arpeggiator {
 pub struct ArpeggiatorInstance {
 	ticks_per_step: u32,
 	tick_counter: u32,
-	pub pattern: ArpeggioData,
+	pub patterns: [ArpeggioData; 8],
+	pub active_pattern: usize,
 	pub arp: Arpeggiator,
 	tempo: TempoDetector,
 	pending_events: heapless::Vec<(u64, NoteEvent), U32>
@@ -241,6 +244,10 @@ impl ArpeggiatorInstance {
 		self.arp.reset();
 	}
 
+	pub fn active_pattern(&self) -> &ArpeggioData {
+		&self.patterns[self.active_pattern]
+	}
+
 	pub fn tick_clock(&mut self, timestamp: u64) {
 		self.tick_counter += 1;
 		if self.tick_counter >= self.ticks_per_step {
@@ -251,7 +258,7 @@ impl ArpeggiatorInstance {
 
 			let pending_events = &mut self.pending_events;
 			self.arp
-				.process_step(&self.pattern, timestamp, |timestamp_steps, event| {
+				.process_step(&self.patterns[self.active_pattern], timestamp, |timestamp_steps, event| {
 					let event_timestamp =
 						timestamp + (time_per_beat as f32 * timestamp_steps) as u64;
 					pending_events
@@ -264,7 +271,7 @@ impl ArpeggiatorInstance {
 
 	pub fn currently_playing_tick(&self) -> f32 {
 		(self.arp.step() as f32 - 1.0 + self.tick_counter as f32 / self.ticks_per_step as f32)
-			.rem_euclid(self.pattern.pattern.len() as f32)
+			.rem_euclid(self.active_pattern().pattern.len() as f32)
 	}
 
 	pub fn add_pending_event(&mut self, timestamp: u64, event: NoteEvent) -> Result<(),()> {
@@ -307,24 +314,34 @@ impl ArpeggiatorInstance {
 	}
 
 	pub fn new() -> ArpeggiatorInstance {
+		let pattern = ArpeggioData {
+					pattern: heapless::Vec::from_slice(&[
+						heapless::Vec::new(),
+						heapless::Vec::new(),
+						heapless::Vec::new(),
+						heapless::Vec::new(),
+						heapless::Vec::new(),
+						heapless::Vec::new(),
+						heapless::Vec::new(),
+						heapless::Vec::new(),
+					]).unwrap(),
+					repeat_mode: RepeatMode::Repeat(12)
+				};
 		ArpeggiatorInstance {
 			ticks_per_step: 6,
 			tick_counter: 0,
 			arp: Arpeggiator::new(),
-			pattern: ArpeggioData {
-				#[rustfmt::skip]
-				pattern: heapless::Vec::from_slice(&[
-					heapless::Vec::from_slice(&[Entry{note: 0, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note:-1, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 0, len_steps: 1, intensity: 0.5, transpose:12 }]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 1, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 2, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 3, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 4, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
-					heapless::Vec::from_slice(&[Entry{note: 5, len_steps: 1, intensity: 0.5, transpose: 0 }]).unwrap(),
-				]).unwrap(),
-				repeat_mode: RepeatMode::Repeat(12)
-			},
+			patterns: [
+				pattern.clone(),
+				pattern.clone(),
+				pattern.clone(),
+				pattern.clone(),
+				pattern.clone(),
+				pattern.clone(),
+				pattern.clone(),
+				pattern.clone(),
+			],
+			active_pattern: 0,
 			tempo: TempoDetector::new(),
 			pending_events: heapless::Vec::new()
 		}

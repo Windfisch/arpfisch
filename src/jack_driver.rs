@@ -94,7 +94,8 @@ impl JackDriver {
 			self.ui.handle_midi(ev.bytes, |_ui, event| {
 				gui_controller.handle_input(
 					event,
-					&mut arp_instance.pattern,
+					&mut arp_instance.patterns,
+					&mut arp_instance.active_pattern,
 					use_external_clock,
 					clock_mode,
 					time_between_midiclocks,
@@ -176,7 +177,7 @@ impl JackDriver {
 
 		let ui = &mut self.ui;
 		self.gui_controller.draw(
-			&self.arp_instance.pattern,
+			&self.arp_instance.patterns[self.arp_instance.active_pattern],
 			self.arp_instance.currently_playing_tick(),
 			use_external_clock,
 			external_clock_present,

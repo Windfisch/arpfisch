@@ -155,7 +155,8 @@ impl GuiController {
 	pub fn handle_input(
 		&mut self,
 		event: GridButtonEvent,
-		pattern: &mut ArpeggioData,
+		patterns: &mut [ArpeggioData],
+		active_pattern: &mut usize,
 		use_external_clock: bool,
 		clock_mode: &mut ClockMode,
 		time_between_midiclocks: &mut u64,
@@ -168,6 +169,8 @@ impl GuiController {
 		use GuiState::*;
 
 		println!("Handle input: {:?}", event);
+
+		let pattern = &mut patterns[*active_pattern];
 
 		match event {
 			Down(x, y, _) => {
