@@ -7,7 +7,8 @@ use crate::tempo_detector::TempoDetector;
 enum GuiState {
 	Edit,
 	Config,
-	Sliders
+	Sliders,
+	PatternSelect
 }
 
 #[derive(Copy, Clone)]
@@ -217,6 +218,21 @@ impl GuiController {
 				}
 				_ => ()
 			},
+			Down(8, 2, _) => {
+				self.state_down_time = time;
+				self.state = match self.state {
+					PatternSelect => Edit,
+					_ => PatternSelect
+				};
+			}
+			Up(8, 2, _) => match self.state {
+				PatternSelect => {
+					if time > self.state_down_time + 48000 / 3 {
+						self.state = Edit
+					}
+				}
+				_ => ()
+			},
 			Down(8, 7, _) => {
 				*chord_hold = !*chord_hold;
 				*chord_settle_time = if *chord_hold { 48000 / 40 } else { 0 };
@@ -367,6 +383,14 @@ impl GuiController {
 							self.fader_history_last_update = time;
 						}
 					}
+					PatternSelect => {
+						match event {
+							Down(x, y, _) if x < 8 && y < 8 => {
+								*active_pattern = x as usize;
+							}
+							_ => ()
+						}
+					}
 				}
 			}
 		}
@@ -403,9 +427,10 @@ impl GuiController {
 			}
 		);
 		match self.state {
-			Edit => {
+			Edit =>  {
 				set_led((8, 0), Off);
 				set_led((8, 1), Off);
+				set_led((8, 2), Off);
 
 				let mut octave_buttons = [Off; 4];
 				if let Some(held) = self.currently_held_key {
@@ -439,6 +464,7 @@ impl GuiController {
 			Config => {
 				set_led((8, 0), Fade(Color::Color(0, 0.74)));
 				set_led((8, 1), Off);
+				set_led((8, 2), Off);
 
 				array[7][2] = Some(match (use_external_clock, external_clock_present) {
 					(true, true) => Alternate(Color::Color(150, 0.7), Color::White(1.0)),
@@ -506,6 +532,7 @@ impl GuiController {
 			Sliders => {
 				set_led((8, 0), Off);
 				set_led((8, 1), Fade(Color::Color(0, 0.74)));
+				set_led((8, 2), Off);
 
 				for (x, fader) in fader_values.iter().enumerate() {
 					if let Some((value, range)) = fader {
@@ -517,6 +544,11 @@ impl GuiController {
 						}
 					}
 				}
+			}
+			PatternSelect => {
+				set_led((8, 0), Off);
+				set_led((8, 1), Off);
+				set_led((8, 2), Fade(Color::Color(0, 0.74)));
 			}
 		}
 
