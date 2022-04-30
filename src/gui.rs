@@ -399,6 +399,7 @@ impl GuiController {
 	pub fn draw(
 		&mut self,
 		pattern: &ArpeggioData,
+		active_pattern: usize,
 		step: f32,
 		use_external_clock: bool,
 		external_clock_present: bool,
@@ -549,6 +550,13 @@ impl GuiController {
 				set_led((8, 0), Off);
 				set_led((8, 1), Off);
 				set_led((8, 2), Fade(Color::Color(0, 0.74)));
+
+				for y in 0..8 {
+					let hue = (360 * y as u16 * 3 / 8) % 360;
+					if y == 7 {
+						array[active_pattern][y] = Some(Solid(Color::Color(hue, 0.7)));
+					}
+				}
 			}
 		}
 

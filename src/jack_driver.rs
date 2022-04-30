@@ -180,6 +180,7 @@ impl JackDriver {
 		let ui = &mut self.ui;
 		self.gui_controller.draw(
 			&self.arp_instance.patterns[self.arp_instance.active_pattern],
+			self.arp_instance.active_pattern,
 			self.arp_instance.currently_playing_tick(),
 			use_external_clock,
 			external_clock_present,
