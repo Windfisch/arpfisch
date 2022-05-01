@@ -556,7 +556,9 @@ impl GuiController {
 				for y in 0..8 {
 					let hue = (360 * y as u16 * 3 / 8) % 360;
 					if y == 7 {
-						array[active_pattern][y] = Some(Solid(Color::Color(hue, 0.7)));
+						if active_pattern < 8 {
+							array[active_pattern][y] = Some(Solid(Color::Color(hue, 0.7)));
+						}
 					}
 				}
 			}
