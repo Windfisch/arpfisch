@@ -151,8 +151,7 @@ impl JackDriver {
 		if !use_external_clock {
 			self.next_midiclock_to_send = self.next_midiclock_to_send.max(self.time);
 
-			// FIXME this should be while
-			if self.next_midiclock_to_send < self.time + scope.n_frames() as u64 {
+			while self.next_midiclock_to_send < self.time + scope.n_frames() as u64 {
 				transport_events.push((self.next_midiclock_to_send, NoteEvent::Clock)).ok();
 				self.next_midiclock_to_send += self.time_between_midiclocks;
 			}
