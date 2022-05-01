@@ -385,7 +385,11 @@ impl GuiController {
 					}
 					PatternSelect => match event {
 						Down(x, y, _) if x < 8 && y < 8 => {
-							*active_pattern = x as usize;
+							if y == 7 {
+								if (x as usize) < patterns.len() {
+									*active_pattern = x as usize;
+								}
+							}
 						}
 						_ => ()
 					}
