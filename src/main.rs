@@ -31,7 +31,7 @@ fn main() {
 		.expect("Failed to connect to JACK")
 		.0;
 
-	let mut jack_driver = JackDriver::new("fnord", &client).unwrap();
+	let mut jack_driver = JackDriver::new("fnord", 4, &client).unwrap();
 
 	//let (mut producer, mut consumer) = ringbuf::RingBuffer::<Message>::new(10).split();
 

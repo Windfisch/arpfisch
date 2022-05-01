@@ -1,8 +1,6 @@
 // this file is part of arpfisch. For copyright and licensing details, see main.rs
 
-use crate::arpeggiator::{
-	ArpeggiatorInstance, ClockMode,
-};
+use crate::arpeggiator::{ArpeggiatorInstance, ClockMode};
 use crate::grid_controllers::launchpad_x::LaunchpadX;
 use crate::grid_controllers::GridController;
 use heapless;
@@ -12,9 +10,13 @@ use jack::*;
 use crate::gui::GuiController; // FIXME this should not be in the jack driver
 use crate::midi::{Note, NoteEvent};
 
-pub struct JackDriver {
+struct ArpContext {
 	in_port: Port<MidiIn>,
 	out_port: Port<MidiOut>,
+	arp_instance: ArpeggiatorInstance
+}
+
+pub struct JackDriver {
 	ui_in_port: Port<MidiIn>,
 	ui_out_port: Port<MidiOut>,
 	ui: LaunchpadX,
@@ -30,21 +32,33 @@ pub struct JackDriver {
 	time_between_midiclocks: u64,
 	clock_mode: ClockMode, // FIXME this should go to MasterController or something like that
 
-	arp_instance: ArpeggiatorInstance
+	active_arp: usize,
+	arp_contexts: Vec<ArpContext>
 }
 
 impl JackDriver {
-	pub fn new(name: &str, client: &jack::Client) -> Result<JackDriver, jack::Error> {
+	pub fn new(
+		name: &str,
+		n_arps: usize,
+		client: &jack::Client
+	) -> Result<JackDriver, jack::Error> {
+		let mut arp_contexts = Vec::new();
+		for i in 0..n_arps {
+			arp_contexts.push(ArpContext {
+				in_port: client.register_port(&format!("{}_{}_in", name, i), MidiIn)?,
+				out_port: client.register_port(&format!("{}_{}_out", name, i), MidiOut)?,
+				arp_instance: ArpeggiatorInstance::new()
+			})
+		}
+
 		let driver = JackDriver {
-			in_port: client.register_port(&format!("{}_in", name), MidiIn)?,
-			out_port: client.register_port(&format!("{}_out", name), MidiOut)?,
 			ui_in_port: client.register_port(&format!("{}_launchpad_in", name), MidiIn)?,
 			ui_out_port: client.register_port(&format!("{}_launchpad_out", name), MidiOut)?,
 			ui: LaunchpadX::new(),
 			gui_controller: GuiController::new(),
 			periods: 0,
 
-			arp_instance: ArpeggiatorInstance::new(),
+			active_arp: 0,
 
 			time: 0,
 			channel: 0,
@@ -52,7 +66,8 @@ impl JackDriver {
 			last_midiclock_received: 0,
 			next_midiclock_to_send: 0,
 			time_between_midiclocks: 24000 / 24,
-			clock_mode: ClockMode::Auto
+			clock_mode: ClockMode::Auto,
+			arp_contexts
 		};
 		Ok(driver)
 	}
@@ -92,7 +107,7 @@ impl JackDriver {
 			let time_between_midiclocks = &mut self.time_between_midiclocks;
 			let clock_mode = &mut self.clock_mode;
 			let time = self.time;
-			let arp_instance = &mut self.arp_instance;
+			let arp_instance = &mut self.arp_contexts[self.active_arp].arp_instance;
 			self.ui.handle_midi(ev.bytes, |_ui, event| {
 				gui_controller.handle_input(
 					event,
@@ -123,28 +138,33 @@ impl JackDriver {
 		let mut ui_writer = self.ui_out_port.writer(scope);
 		let mut transport_events: heapless::Vec<(u64, NoteEvent), U16> = heapless::Vec::new();
 
-		for event in self.in_port.iter(scope) {
-			let timestamp = self.time + event.time as u64;
+		for (i, context) in self.arp_contexts.iter_mut().enumerate() {
+			for event in context.in_port.iter(scope) {
+				let timestamp = self.time + event.time as u64;
 
-			if event.bytes[0] == 0xFA {
-				transport_events.push((timestamp, NoteEvent::Start)).ok();
-			}
-			if event.bytes[0] == 0xF8 {
-				self.last_midiclock_received = self.time;
-
-				if use_external_clock {
-					transport_events.push((timestamp, NoteEvent::Clock)).ok();
+				if event.bytes[0] == 0xFA && i == 0 {
+					transport_events.push((timestamp, NoteEvent::Start)).ok();
 				}
-			}
-			if event.bytes[0] == 0x90 | self.channel {
-				self.arp_instance
-					.arp
-					.note_on(Note(event.bytes[1]), timestamp);
-			}
-			if event.bytes[0] == 0x80 | self.channel {
-				self.arp_instance
-					.arp
-					.note_off(Note(event.bytes[1]), timestamp);
+				if event.bytes[0] == 0xF8 && i == 0 {
+					self.last_midiclock_received = self.time;
+
+					if use_external_clock {
+						transport_events.push((timestamp, NoteEvent::Clock)).ok();
+					}
+				}
+
+				if event.bytes[0] == 0x90 | self.channel {
+					context
+						.arp_instance
+						.arp
+						.note_on(Note(event.bytes[1]), timestamp);
+				}
+				if event.bytes[0] == 0x80 | self.channel {
+					context
+						.arp_instance
+						.arp
+						.note_off(Note(event.bytes[1]), timestamp);
+				}
 			}
 		}
 
@@ -152,15 +172,31 @@ impl JackDriver {
 			self.next_midiclock_to_send = self.next_midiclock_to_send.max(self.time);
 
 			while self.next_midiclock_to_send < self.time + scope.n_frames() as u64 {
-				transport_events.push((self.next_midiclock_to_send, NoteEvent::Clock)).ok();
+				transport_events
+					.push((self.next_midiclock_to_send, NoteEvent::Clock))
+					.ok();
 				self.next_midiclock_to_send += self.time_between_midiclocks;
 			}
 		}
 
+		for context in self.arp_contexts.iter_mut() {
+			for (timestamp, event) in transport_events.iter() {
+				context
+					.arp_instance
+					.add_pending_event(*timestamp, *event)
+					.expect("Failed to write tick event");
+				match event {
+					NoteEvent::Clock => {
+						context.arp_instance.tick_clock(*timestamp);
+					}
+					NoteEvent::Start => {
+						context.arp_instance.restart_transport();
+					}
+					_ => ()
+				}
+			}
+		}
 		for (timestamp, event) in transport_events.iter() {
-			self.arp_instance
-				.add_pending_event(*timestamp, *event)
-				.expect("Failed to write tick event");
 			match event {
 				NoteEvent::Clock => {
 					ui_writer
@@ -169,36 +205,29 @@ impl JackDriver {
 							bytes: &[0xF8]
 						})
 						.ok();
-					
-					self.arp_instance.tick_clock(*timestamp);
-				}
-				NoteEvent::Start => {
-					self.arp_instance.restart_transport();
 				}
 				_ => ()
 			}
 		}
 
 		let ui = &mut self.ui;
+		let arp_instance = &mut self.arp_contexts[self.active_arp].arp_instance;
 		self.gui_controller.draw(
-			&self.arp_instance.patterns[self.arp_instance.active_pattern],
-			self.arp_instance.active_pattern,
-			self.arp_instance.currently_playing_tick(),
+			&arp_instance.patterns[arp_instance.active_pattern],
+			arp_instance.active_pattern,
+			arp_instance.currently_playing_tick(),
 			use_external_clock,
 			external_clock_present,
 			self.clock_mode,
-			self.arp_instance.arp.chord_hold,
+			arp_instance.arp.chord_hold,
 			&[
-				Some((self.arp_instance.arp.global_length_modifier, 0.0..=2.0)),
+				Some((arp_instance.arp.global_length_modifier, 0.0..=2.0)),
 				None,
-				Some((
-					self.arp_instance.arp.intensity_length_modifier_amount,
-					0.0..=2.0
-				)),
+				Some((arp_instance.arp.intensity_length_modifier_amount, 0.0..=2.0)),
 				None,
-				Some((self.arp_instance.arp.global_velocity, 0.0..=2.0)),
+				Some((arp_instance.arp.global_velocity, 0.0..=2.0)),
 				None,
-				Some((self.arp_instance.arp.intensity_velocity_amount, 0.0..=2.0))
+				Some((arp_instance.arp.intensity_velocity_amount, 0.0..=2.0))
 			],
 			self.time,
 			|pos, color| {
@@ -213,32 +242,36 @@ impl JackDriver {
 			}
 		);
 
-		let mut writer = self.out_port.writer(scope);
-		let time = self.time;
-		let out_channel = self.out_channel;
-		self.arp_instance
-			.process_pending_events(self.time + (scope.n_frames() as u64), |events| {
-				for event in events {
-					println!("event: {:?}", event);
-					let bytes: heapless::Vec<_, U4> = match event.1 {
-						NoteEvent::NoteOn(note, velo) => {
-							heapless::Vec::from_slice(&[0x90 | out_channel, note.0, velo])
+		for context in self.arp_contexts.iter_mut() {
+			let mut writer = context.out_port.writer(scope);
+			let time = self.time;
+			let out_channel = self.out_channel;
+			context.arp_instance.process_pending_events(
+				self.time + (scope.n_frames() as u64),
+				|events| {
+					for event in events {
+						println!("event: {:?}", event);
+						let bytes: heapless::Vec<_, U4> = match event.1 {
+							NoteEvent::NoteOn(note, velo) => {
+								heapless::Vec::from_slice(&[0x90 | out_channel, note.0, velo])
+							}
+							NoteEvent::NoteOff(note) => {
+								heapless::Vec::from_slice(&[0x80 | out_channel, note.0, 64])
+							}
+							NoteEvent::Clock => heapless::Vec::from_slice(&[0xF8]),
+							NoteEvent::Start => heapless::Vec::from_slice(&[0xFA])
 						}
-						NoteEvent::NoteOff(note) => {
-							heapless::Vec::from_slice(&[0x80 | out_channel, note.0, 64])
-						}
-						NoteEvent::Clock => heapless::Vec::from_slice(&[0xF8]),
-						NoteEvent::Start => heapless::Vec::from_slice(&[0xFA])
+						.unwrap();
+						writer
+							.write(&jack::RawMidi {
+								time: (event.0 - time) as u32,
+								bytes: &bytes
+							})
+							.expect("Writing to MIDI buffer failed");
 					}
-					.unwrap();
-					writer
-						.write(&jack::RawMidi {
-							time: (event.0 - time) as u32,
-							bytes: &bytes
-						})
-						.expect("Writing to MIDI buffer failed");
 				}
-			});
+			);
+		}
 
 		self.time += scope.n_frames() as u64;
 
