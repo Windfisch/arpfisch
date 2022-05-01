@@ -1,7 +1,7 @@
 // this file is part of arpfisch. For copyright and licensing details, see main.rs
 
 use crate::arpeggiator::{
-	Arpeggiator, ArpeggiatorInstance, ArpeggioData, ClockMode, Entry, RepeatMode
+	ArpeggiatorInstance, ClockMode,
 };
 use crate::grid_controllers::launchpad_x::LaunchpadX;
 use crate::grid_controllers::GridController;
@@ -121,27 +121,19 @@ impl JackDriver {
 		}
 
 		let mut ui_writer = self.ui_out_port.writer(scope);
+		let mut transport_events: heapless::Vec<(u64, NoteEvent), U16> = heapless::Vec::new();
 
 		for event in self.in_port.iter(scope) {
 			let timestamp = self.time + event.time as u64;
 
 			if event.bytes[0] == 0xFA {
-				// start
-				self.arp_instance.restart_transport();
-				self.arp_instance
-					.add_pending_event(timestamp, NoteEvent::Start)
-					.expect("Failed to write tick event");
+				transport_events.push((timestamp, NoteEvent::Start)).ok();
 			}
 			if event.bytes[0] == 0xF8 {
-				// clock
 				self.last_midiclock_received = self.time;
 
 				if use_external_clock {
-					ui_writer.write(&event).ok();
-					self.arp_instance
-						.add_pending_event(timestamp, NoteEvent::Clock)
-						.expect("Failed to write tick event");
-					self.arp_instance.tick_clock(timestamp);
+					transport_events.push((timestamp, NoteEvent::Clock)).ok();
 				}
 			}
 			if event.bytes[0] == 0x90 | self.channel {
@@ -159,21 +151,32 @@ impl JackDriver {
 		if !use_external_clock {
 			self.next_midiclock_to_send = self.next_midiclock_to_send.max(self.time);
 
+			// FIXME this should be while
 			if self.next_midiclock_to_send < self.time + scope.n_frames() as u64 {
-				ui_writer
-					.write(&jack::RawMidi {
-						time: (self.next_midiclock_to_send - self.time) as jack::Frames,
-						bytes: &[0xF8]
-					})
-					.ok();
-				self.arp_instance
-					.add_pending_event(self.next_midiclock_to_send, NoteEvent::Clock)
-					.expect("Failed to write tick event");
+				transport_events.push((self.next_midiclock_to_send, NoteEvent::Clock)).ok();
+				self.next_midiclock_to_send += self.time_between_midiclocks;
+			}
+		}
 
-				self.arp_instance.tick_clock(self.next_midiclock_to_send);
-
-				self.next_midiclock_to_send =
-					self.next_midiclock_to_send + self.time_between_midiclocks;
+		for (timestamp, event) in transport_events.iter() {
+			self.arp_instance
+				.add_pending_event(*timestamp, *event)
+				.expect("Failed to write tick event");
+			match event {
+				NoteEvent::Clock => {
+					ui_writer
+						.write(&jack::RawMidi {
+							time: (timestamp - self.time) as jack::Frames,
+							bytes: &[0xF8]
+						})
+						.ok();
+					
+					self.arp_instance.tick_clock(*timestamp);
+				}
+				NoteEvent::Start => {
+					self.arp_instance.restart_transport();
+				}
+				_ => ()
 			}
 		}
 
