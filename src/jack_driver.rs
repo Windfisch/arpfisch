@@ -16,6 +16,8 @@ struct ArpContext {
 	arp_instance: ArpeggiatorInstance
 }
 
+type TransportEventVec = heapless::Vec<(u64, NoteEvent), U16>;
+
 pub struct JackDriver {
 	ui_in_port: Port<MidiIn>,
 	ui_out_port: Port<MidiOut>,
@@ -93,14 +95,7 @@ impl JackDriver {
 		}
 	}
 
-	pub fn process(&mut self, client: &jack::Client, scope: &ProcessScope) {
-		let external_clock_present = self.time - self.last_midiclock_received <= 48000;
-		let use_external_clock = match self.clock_mode {
-			ClockMode::Internal => false,
-			ClockMode::External => true,
-			ClockMode::Auto => external_clock_present
-		};
-
+	pub fn process_ui_input(&mut self, use_external_clock: bool, scope: &ProcessScope) {
 		for ev in self.ui_in_port.iter(scope) {
 			println!("event!");
 			let gui_controller = &mut self.gui_controller;
@@ -134,10 +129,15 @@ impl JackDriver {
 				);
 			});
 		}
+	}
 
-		let mut ui_writer = self.ui_out_port.writer(scope);
-		let mut transport_events: heapless::Vec<(u64, NoteEvent), U16> = heapless::Vec::new();
-
+	/// Also does clock generation
+	pub fn process_arp_input(
+		&mut self,
+		use_external_clock: bool,
+		scope: &ProcessScope
+	) -> TransportEventVec {
+		let mut transport_events = TransportEventVec::new();
 		for (i, context) in self.arp_contexts.iter_mut().enumerate() {
 			for event in context.in_port.iter(scope) {
 				let timestamp = self.time + event.time as u64;
@@ -179,23 +179,18 @@ impl JackDriver {
 			}
 		}
 
-		for context in self.arp_contexts.iter_mut() {
-			for (timestamp, event) in transport_events.iter() {
-				context
-					.arp_instance
-					.add_pending_event(*timestamp, *event)
-					.expect("Failed to write tick event");
-				match event {
-					NoteEvent::Clock => {
-						context.arp_instance.tick_clock(*timestamp);
-					}
-					NoteEvent::Start => {
-						context.arp_instance.restart_transport();
-					}
-					_ => ()
-				}
-			}
-		}
+		transport_events
+	}
+
+	pub fn process_ui_output(
+		&mut self,
+		transport_events: &TransportEventVec,
+		use_external_clock: bool,
+		external_clock_present: bool,
+		scope: &ProcessScope
+	) {
+		let mut ui_writer = self.ui_out_port.writer(scope);
+
 		for (timestamp, event) in transport_events.iter() {
 			match event {
 				NoteEvent::Clock => {
@@ -241,7 +236,30 @@ impl JackDriver {
 				});
 			}
 		);
+	}
 
+	pub fn process_arp_output(
+		&mut self,
+		transport_events: &TransportEventVec,
+		scope: &ProcessScope
+	) {
+		for context in self.arp_contexts.iter_mut() {
+			for (timestamp, event) in transport_events.iter() {
+				context
+					.arp_instance
+					.add_pending_event(*timestamp, *event)
+					.expect("Failed to write tick event");
+				match event {
+					NoteEvent::Clock => {
+						context.arp_instance.tick_clock(*timestamp);
+					}
+					NoteEvent::Start => {
+						context.arp_instance.restart_transport();
+					}
+					_ => ()
+				}
+			}
+		}
 		for context in self.arp_contexts.iter_mut() {
 			let mut writer = context.out_port.writer(scope);
 			let time = self.time;
@@ -272,6 +290,28 @@ impl JackDriver {
 				}
 			);
 		}
+	}
+
+	pub fn process(&mut self, client: &jack::Client, scope: &ProcessScope) {
+		let external_clock_present = self.time - self.last_midiclock_received <= 48000;
+		let use_external_clock = match self.clock_mode {
+			ClockMode::Internal => false,
+			ClockMode::External => true,
+			ClockMode::Auto => external_clock_present
+		};
+
+		self.process_ui_input(use_external_clock, scope);
+
+		let transport_events = self.process_arp_input(use_external_clock, scope);
+
+		self.process_ui_output(
+			&transport_events,
+			use_external_clock,
+			external_clock_present,
+			scope
+		);
+
+		self.process_arp_output(&transport_events, scope);
 
 		self.time += scope.n_frames() as u64;
 
