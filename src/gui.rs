@@ -156,8 +156,10 @@ impl GuiController {
 	pub fn handle_input(
 		&mut self,
 		event: GridButtonEvent,
-		patterns: &mut [ArpeggioData],
-		active_pattern: &mut usize,
+		pattern: &mut ArpeggioData,
+		n_patterns: usize,
+		active_pattern: &mut [usize],
+		active_arp: &mut usize,
 		use_external_clock: bool,
 		clock_mode: &mut ClockMode,
 		time_between_midiclocks: &mut u64,
@@ -171,7 +173,7 @@ impl GuiController {
 
 		println!("Handle input: {:?}", event);
 
-		let pattern = &mut patterns[*active_pattern];
+		let n_arps = active_pattern.len();
 
 		match event {
 			Down(x, y, _) => {
@@ -385,9 +387,12 @@ impl GuiController {
 					}
 					PatternSelect => match event {
 						Down(x, y, _) if x < 8 && y < 8 => {
-							if y == 7 {
-								if (x as usize) < patterns.len() {
-									*active_pattern = x as usize;
+							let x = x as usize;
+							let y = y as usize;
+							if y < n_arps {
+								if x < n_patterns {
+									active_pattern[y] = x;
+									*active_arp = y;
 								}
 							}
 						}
@@ -401,7 +406,8 @@ impl GuiController {
 	pub fn draw(
 		&mut self,
 		pattern: &ArpeggioData,
-		active_pattern: usize,
+		active_pattern: &[usize],
+		active_arp: usize,
 		step: f32,
 		use_external_clock: bool,
 		external_clock_present: bool,
@@ -553,12 +559,19 @@ impl GuiController {
 				set_led((8, 1), Off);
 				set_led((8, 2), Fade(Color::Color(0, 0.74)));
 
-				for y in 0..8 {
-					let hue = (360 * y as u16 * 3 / 8) % 360;
-					if y == 7 {
-						if active_pattern < 8 {
-							array[active_pattern][y] = Some(Solid(Color::Color(hue, 0.7)));
-						}
+				let n_arps = active_pattern.len();
+				for y in 0..n_arps.min(8) {
+					let y = y as usize;
+
+					let color = if y == active_arp {
+						Color::White(1.0)
+					}
+					else {
+						Color::Color((360 * y as u16 * 3 / 8) % 360, 0.7)
+					};
+
+					if active_pattern[y] < 8 {
+						array[active_pattern[y]][y] = Some(Solid(color));
 					}
 				}
 			}

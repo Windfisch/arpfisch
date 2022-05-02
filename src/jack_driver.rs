@@ -96,18 +96,29 @@ impl JackDriver {
 	}
 
 	pub fn process_ui_input(&mut self, use_external_clock: bool, scope: &ProcessScope) {
+		// FIXME magic (huge) constant
+		let mut active_patterns: heapless::Vec<usize, U64> = self
+			.arp_contexts
+			.iter()
+			.map(|context| context.arp_instance.active_pattern)
+			.collect();
+
+		let gui_controller = &mut self.gui_controller;
+		let time_between_midiclocks = &mut self.time_between_midiclocks;
+		let clock_mode = &mut self.clock_mode;
+		let time = self.time;
+		let arp_instance = &mut self.arp_contexts[self.active_arp].arp_instance;
+		let active_arp = &mut self.active_arp;
+
 		for ev in self.ui_in_port.iter(scope) {
 			println!("event!");
-			let gui_controller = &mut self.gui_controller;
-			let time_between_midiclocks = &mut self.time_between_midiclocks;
-			let clock_mode = &mut self.clock_mode;
-			let time = self.time;
-			let arp_instance = &mut self.arp_contexts[self.active_arp].arp_instance;
 			self.ui.handle_midi(ev.bytes, |_ui, event| {
 				gui_controller.handle_input(
 					event,
-					&mut arp_instance.patterns,
-					&mut arp_instance.active_pattern,
+					&mut arp_instance.patterns[arp_instance.active_pattern],
+					8, // FIXME
+					&mut active_patterns,
+					active_arp,
 					use_external_clock,
 					clock_mode,
 					time_between_midiclocks,
@@ -128,6 +139,10 @@ impl JackDriver {
 					time
 				);
 			});
+		}
+
+		for (active_pattern, context) in active_patterns.iter().zip(self.arp_contexts.iter_mut()) {
+			context.arp_instance.active_pattern = *active_pattern;
 		}
 	}
 
@@ -206,10 +221,17 @@ impl JackDriver {
 		}
 
 		let ui = &mut self.ui;
+		// FIXME magic (huge) constant
+		let active_patterns: heapless::Vec<usize, U64> = self
+			.arp_contexts
+			.iter()
+			.map(|context| context.arp_instance.active_pattern)
+			.collect();
 		let arp_instance = &mut self.arp_contexts[self.active_arp].arp_instance;
 		self.gui_controller.draw(
 			&arp_instance.patterns[arp_instance.active_pattern],
-			arp_instance.active_pattern,
+			&active_patterns,
+			self.active_arp,
 			arp_instance.currently_playing_tick(),
 			use_external_clock,
 			external_clock_present,
