@@ -133,7 +133,8 @@ pub struct Arpeggiator {
 	chord: heapless::Vec<Note, U16>,
 	stable_chord: heapless::Vec<Note, U16>,
 	chord_next_update_time: Option<u64>,
-	step: usize
+	step: usize,
+	scale: Option<heapless::Vec<Note, U16>>
 }
 
 #[derive(Copy, Clone)]
@@ -141,6 +142,27 @@ pub enum ClockMode {
 	Internal,
 	External,
 	Auto
+}
+
+fn scale_from<Len: heapless::ArrayLength<Note>> (scale: &[Note], bottom: Note) -> heapless::Vec<Note, Len> {
+	match scale.iter().position(|note| (note.0 as isize - bottom.0 as isize) % 12 == 0) {
+		Some(bottom_index) => {
+			let mut result = heapless::Vec::new();
+			let offset = bottom.0 as isize - scale[bottom_index].0 as isize;
+			for i in bottom_index .. (bottom_index + scale.len()) {
+				let octave = if i < scale.len() { 0 } else { 12 };
+				let pitch = scale[i % scale.len()].0 as isize + offset + octave;
+				if ((u8::MIN as isize)..=(u8::MAX as isize)).contains(&pitch) {
+					result.push(Note(pitch as u8)).ok();
+				}
+			}
+
+			result
+		}
+		None => {
+			heapless::Vec::new()
+		}
+	}
 }
 
 impl Arpeggiator {
@@ -156,26 +178,47 @@ impl Arpeggiator {
 			chord_next_update_time: None,
 			chord_settle_time: 0,
 			chord_hold: false,
-			chord_hold_old: false
+			chord_hold_old: false,
+			scale: None
 		}
 	}
 
 	pub fn note_on(&mut self, note: Note, time: u64) {
-		if self.chord.iter().position(|n| *n == note).is_none() {
-			self.chord.push(note).ok();
-			self.chord.sort();
-			self.chord_next_update_time = Some(time + self.chord_settle_time);
+		match self.scale {
+			None => {
+				if self.chord.iter().position(|n| *n == note).is_none() {
+					self.chord.push(note).ok();
+					self.chord.sort();
+					self.chord_next_update_time = Some(time + self.chord_settle_time);
+				}
+			}
+			Some(ref scale) => {
+				self.stable_chord = scale_from(&scale, note);
+			}
 		}
 	}
 	pub fn note_off(&mut self, note: Note, time: u64) {
-		if let Some(i) = self.chord.iter().position(|n| *n == note) {
-			self.chord.swap_remove(i);
-			self.chord.sort();
-			if self.chord_hold && self.chord.is_empty() {
-				self.chord_next_update_time = None;
+		match self.scale {
+			None => {
+				if let Some(i) = self.chord.iter().position(|n| *n == note) {
+					self.chord.swap_remove(i);
+					self.chord.sort();
+					if self.chord_hold && self.chord.is_empty() {
+						self.chord_next_update_time = None;
+					}
+					else {
+						self.chord_next_update_time = Some(time + self.chord_settle_time);
+					}
+				}
 			}
-			else {
-				self.chord_next_update_time = Some(time + self.chord_settle_time);
+			Some(_) => {
+				if !self.chord_hold {
+					if let Some(bottom_note) = self.stable_chord.first() {
+						if *bottom_note == note {
+							self.stable_chord.clear();
+						}
+					}
+				}
 			}
 		}
 	}
@@ -358,5 +401,47 @@ fn div_floor(numerator: isize, denominator: usize) -> isize {
 	}
 	else {
 		(numerator - denominator as isize + 1) / denominator as isize
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	fn assert_slice_eq<T: PartialEq + std::fmt::Debug>(a: &[T], b: &[T]) {
+		assert!(a.len() == b.len());
+		a.iter().zip(b.iter()).enumerate().for_each(|(i, (aa, bb))| assert!(aa==bb, "mismatch at index {} of {:?} == {:?}", i, a, b));
+	}
+
+	#[test]
+	pub fn scale_from() {
+		use super::scale_from;
+		use super::Note;
+		use super::U32;
+
+		let scale = [
+			Note(30),
+			Note(32),
+			Note(33),
+			Note(35),
+		];
+
+		assert_slice_eq(
+			&scale_from::<U32>(&scale, Note(30)),
+			&[Note(30), Note(32), Note(33), Note(35)]
+		);
+
+		assert_slice_eq(
+			&scale_from::<U32>(&scale, Note(33)),
+			&[Note(33), Note(35), Note(42), Note(44)]
+		);
+
+		assert_slice_eq(
+			&scale_from::<U32>(&scale, Note(42)),
+			&[Note(42), Note(44), Note(45), Note(47)]
+		);
+		
+		assert_slice_eq(
+			&scale_from::<U32>(&scale, Note(31)),
+			&[]
+		);
 	}
 }
