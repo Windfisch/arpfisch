@@ -1,4 +1,4 @@
-use crate::grid_controllers::{GridButtonEvent, LightingMode, Color};
+use crate::grid_controllers::{Color, GridButtonEvent, LightingMode};
 
 pub struct SlidersScreen {
 	down_times: [[Option<u64>; 8]; 8],
@@ -11,7 +11,7 @@ impl SlidersScreen {
 		SlidersScreen {
 			down_times: [[None; 8]; 8],
 			fader_history: [[0.0; 2]; 8],
-			fader_history_last_update: 0,
+			fader_history_last_update: 0
 		}
 	}
 
@@ -22,7 +22,7 @@ impl SlidersScreen {
 		time: u64
 	) {
 		use GridButtonEvent::*;
-		
+
 		match event {
 			Down(x, y, _) => {
 				if x < 8 && y < 8 {
@@ -42,9 +42,8 @@ impl SlidersScreen {
 				for (fader_x, fader) in fader_values.iter_mut().enumerate() {
 					if let Some((value, range)) = fader {
 						if x as usize == fader_x {
-							**value = y as f32 / 7.0
-								* (range.end() - range.start()) + range
-								.start();
+							**value =
+								y as f32 / 7.0 * (range.end() - range.start()) + range.start();
 							self.fader_history[x as usize] = [**value; 2];
 						}
 					}
@@ -52,14 +51,10 @@ impl SlidersScreen {
 			}
 			Pressure(x, y, pressure) => {
 				if x < 8 && y < 8 && (x as usize) < fader_values.len() {
-					if let Some((value, range)) = fader_values[x as usize].as_mut()
-					{
-						if let Some(down_time) =
-							self.down_times[x as usize][y as usize]
-						{
+					if let Some((value, range)) = fader_values[x as usize].as_mut() {
+						if let Some(down_time) = self.down_times[x as usize][y as usize] {
 							if time >= down_time + 48000 / 6 {
-								**value = pressure * (range.end() - range.start())
-									+ range.start();
+								**value = pressure * (range.end() - range.start()) + range.start();
 							}
 						}
 					}
@@ -85,19 +80,18 @@ impl SlidersScreen {
 			self.fader_history_last_update = time;
 		}
 	}
-	
+
 	pub fn draw(
 		&mut self,
 		array: &mut [[Option<LightingMode>; 9]; 8],
-		fader_values: &[Option<(f32, std::ops::RangeInclusive<f32>)>],
+		fader_values: &[Option<(f32, std::ops::RangeInclusive<f32>)>]
 	) {
 		use LightingMode::*;
 
 		for (x, fader) in fader_values.iter().enumerate() {
 			if let Some((value, range)) = fader {
-				let leds = 1
-					+ (7.0 * (value - range.start()) / (range.end() - range.start()))
-						as usize;
+				let leds =
+					1 + (7.0 * (value - range.start()) / (range.end() - range.start())) as usize;
 				for y in 0..leds {
 					array[x][y] = Some(Solid(Color::Color(x as u16 * 107, 0.7)));
 				}
@@ -105,4 +99,3 @@ impl SlidersScreen {
 		}
 	}
 }
-

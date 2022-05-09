@@ -3,18 +3,15 @@
 use crate::arpeggiator::*;
 use crate::grid_controllers::*;
 
+mod config;
+mod edit;
 mod pattern_select;
 mod sliders;
-mod edit;
-mod config;
 
 use config::ConfigScreen;
-use sliders::SlidersScreen;
-use pattern_select::PatternSelectScreen;
 use edit::EditScreen;
-
-
-
+use pattern_select::PatternSelectScreen;
+use sliders::SlidersScreen;
 
 enum ScreenOverlay {
 	Sliders(SlidersScreen),
@@ -27,7 +24,7 @@ pub struct GuiController {
 	state_down_time: u64,
 
 	edit_screen: EditScreen,
-	screen_overlay: ScreenOverlay,
+	screen_overlay: ScreenOverlay
 }
 
 impl GuiController {
@@ -80,7 +77,10 @@ impl GuiController {
 					match y {
 						0 => self.screen_overlay = ScreenOverlay::Config(ConfigScreen::new()),
 						1 => self.screen_overlay = ScreenOverlay::Sliders(SlidersScreen::new()),
-						2 => self.screen_overlay = ScreenOverlay::PatternSelect(PatternSelectScreen::new()),
+						2 => {
+							self.screen_overlay =
+								ScreenOverlay::PatternSelect(PatternSelectScreen::new())
+						}
 						_ => ()
 					}
 				}
@@ -92,20 +92,26 @@ impl GuiController {
 					}
 				}
 			}
-			event => {
-				match self.screen_overlay {
-					ScreenOverlay::None => {
-						self.edit_screen.handle_input(event, pattern, time);
-					}
-					ScreenOverlay::Config(ref mut config) => {
-						config.handle_input(event, pattern, &mut self.edit_screen.pane_height, use_external_clock, clock_mode, time_between_midiclocks, time);
-					}
-					ScreenOverlay::Sliders(ref mut sliders) => {
-						sliders.handle_input(event, fader_values, time);
-					}
-					ScreenOverlay::PatternSelect(ref mut screen) => {
-						screen.handle_input(event, n_patterns, active_pattern, active_arp);
-					}
+			event => match self.screen_overlay {
+				ScreenOverlay::None => {
+					self.edit_screen.handle_input(event, pattern, time);
+				}
+				ScreenOverlay::Config(ref mut config) => {
+					config.handle_input(
+						event,
+						pattern,
+						&mut self.edit_screen.pane_height,
+						use_external_clock,
+						clock_mode,
+						time_between_midiclocks,
+						time
+					);
+				}
+				ScreenOverlay::Sliders(ref mut sliders) => {
+					sliders.handle_input(event, fader_values, time);
+				}
+				ScreenOverlay::PatternSelect(ref mut screen) => {
+					screen.handle_input(event, n_patterns, active_pattern, active_arp);
 				}
 			}
 		}
@@ -125,23 +131,21 @@ impl GuiController {
 		time: u64,
 		mut set_led: impl FnMut((u8, u8), LightingMode)
 	) {
-		use LightingMode::*;
 		use std::convert::TryInto;
-		
+		use LightingMode::*;
+
 		const MENU_SELECTED: LightingMode = Fade(Color::Color(0, 0.74));
 
 		let mut array = [[None; 9]; 9];
 		let (right_buttons, grid_and_top) = (&mut array).split_last_mut().unwrap();
 		let grid_and_top = grid_and_top.try_into().unwrap();
 
-		right_buttons[7] = Some(
-			if chord_hold {
-				Solid(Color::Color(215, 0.7))
-			}
-			else {
-				Solid(Color::Color(300, 0.1))
-			}
-		);
+		right_buttons[7] = Some(if chord_hold {
+			Solid(Color::Color(215, 0.7))
+		}
+		else {
+			Solid(Color::Color(300, 0.1))
+		});
 
 		match self.screen_overlay {
 			ScreenOverlay::None => {
@@ -149,7 +153,14 @@ impl GuiController {
 			}
 			ScreenOverlay::Config(ref mut screen) => {
 				right_buttons[0] = Some(MENU_SELECTED);
-				screen.draw(grid_and_top, pattern, self.edit_screen.pane_height, use_external_clock, external_clock_present, clock_mode);
+				screen.draw(
+					grid_and_top,
+					pattern,
+					self.edit_screen.pane_height,
+					use_external_clock,
+					external_clock_present,
+					clock_mode
+				);
 			}
 			ScreenOverlay::Sliders(ref mut screen) => {
 				right_buttons[1] = Some(MENU_SELECTED);
@@ -160,7 +171,7 @@ impl GuiController {
 				screen.draw(grid_and_top, active_pattern, active_arp)
 			}
 		}
-		
+
 		for x in 0..9 {
 			for y in 0..9 {
 				set_led((x, y), array[x as usize][y as usize].unwrap_or(Off));
@@ -168,4 +179,3 @@ impl GuiController {
 		}
 	}
 }
-

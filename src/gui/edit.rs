@@ -1,5 +1,5 @@
-use crate::grid_controllers::{GridButtonEvent, LightingMode, Color};
 use crate::arpeggiator::{ArpeggioData, Entry};
+use crate::grid_controllers::{Color, GridButtonEvent, LightingMode};
 
 #[derive(Copy, Clone)]
 struct HeldKey {
@@ -17,7 +17,7 @@ pub struct EditScreen {
 	last_scroll_update: u64,
 	first_y: isize,
 	currently_held_key: Option<HeldKey>,
-	current_octave: i32,
+	current_octave: i32
 }
 
 impl EditScreen {
@@ -29,7 +29,7 @@ impl EditScreen {
 			last_scroll_update: 0,
 			first_y: 0,
 			currently_held_key: None,
-			current_octave: 0,
+			current_octave: 0
 		}
 	}
 
@@ -128,12 +128,7 @@ impl EditScreen {
 		}
 	}
 
-	pub fn handle_input(
-		&mut self,
-		event: GridButtonEvent,
-		pattern: &mut ArpeggioData,
-		time: u64
-	) {
+	pub fn handle_input(&mut self, event: GridButtonEvent, pattern: &mut ArpeggioData, time: u64) {
 		use GridButtonEvent::*;
 
 		match event {
@@ -163,11 +158,8 @@ impl EditScreen {
 							pattern.delete(held.pos, delete_entry);
 						}
 						else {
-							let mut new_entry = pattern
-								.filter(held.pos, held.note)
-								.next()
-								.unwrap()
-								.clone();
+							let mut new_entry =
+								pattern.filter(held.pos, held.note).next().unwrap().clone();
 							new_entry.transpose = octave * 12;
 							pattern.set(held.pos, new_entry).ok(); // all we can do is ignore an error
 						}
@@ -192,10 +184,10 @@ impl EditScreen {
 		array: &mut [[Option<LightingMode>; 9]; 8],
 		pattern: &ArpeggioData,
 		step: f32,
-		time: u64,
+		time: u64
 	) {
 		use LightingMode::*;
-		
+
 		if self.target_first_x != self.first_x && time >= self.last_scroll_update + 1024 {
 			self.first_x += (self.target_first_x - self.first_x).signum();
 			self.last_scroll_update = time;
@@ -215,7 +207,7 @@ impl EditScreen {
 				Solid(octave_color(self.current_octave));
 		}
 		for i in 0..4 {
-			array[i+4][8] = Some(octave_buttons[i as usize]);
+			array[i + 4][8] = Some(octave_buttons[i as usize]);
 		}
 
 		let n_panes = 8 / self.pane_height;

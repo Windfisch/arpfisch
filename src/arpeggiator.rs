@@ -144,12 +144,18 @@ pub enum ClockMode {
 	Auto
 }
 
-fn scale_from<Len: heapless::ArrayLength<Note>> (scale: &[Note], bottom: Note) -> heapless::Vec<Note, Len> {
-	match scale.iter().position(|note| (note.0 as isize - bottom.0 as isize) % 12 == 0) {
+fn scale_from<Len: heapless::ArrayLength<Note>>(
+	scale: &[Note],
+	bottom: Note
+) -> heapless::Vec<Note, Len> {
+	match scale
+		.iter()
+		.position(|note| (note.0 as isize - bottom.0 as isize) % 12 == 0)
+	{
 		Some(bottom_index) => {
 			let mut result = heapless::Vec::new();
 			let offset = bottom.0 as isize - scale[bottom_index].0 as isize;
-			for i in bottom_index .. (bottom_index + scale.len()) {
+			for i in bottom_index..(bottom_index + scale.len()) {
 				let octave = if i < scale.len() { 0 } else { 12 };
 				let pitch = scale[i % scale.len()].0 as isize + offset + octave;
 				if ((u8::MIN as isize)..=(u8::MAX as isize)).contains(&pitch) {
@@ -159,9 +165,7 @@ fn scale_from<Len: heapless::ArrayLength<Note>> (scale: &[Note], bottom: Note) -
 
 			result
 		}
-		None => {
-			heapless::Vec::new()
-		}
+		None => heapless::Vec::new()
 	}
 }
 
@@ -408,7 +412,12 @@ fn div_floor(numerator: isize, denominator: usize) -> isize {
 mod tests {
 	fn assert_slice_eq<T: PartialEq + std::fmt::Debug>(a: &[T], b: &[T]) {
 		assert!(a.len() == b.len());
-		a.iter().zip(b.iter()).enumerate().for_each(|(i, (aa, bb))| assert!(aa==bb, "mismatch at index {} of {:?} == {:?}", i, a, b));
+		a.iter()
+			.zip(b.iter())
+			.enumerate()
+			.for_each(|(i, (aa, bb))| {
+				assert!(aa == bb, "mismatch at index {} of {:?} == {:?}", i, a, b)
+			});
 	}
 
 	#[test]
@@ -417,12 +426,7 @@ mod tests {
 		use super::Note;
 		use super::U32;
 
-		let scale = [
-			Note(30),
-			Note(32),
-			Note(33),
-			Note(35),
-		];
+		let scale = [Note(30), Note(32), Note(33), Note(35)];
 
 		assert_slice_eq(
 			&scale_from::<U32>(&scale, Note(30)),
@@ -438,10 +442,7 @@ mod tests {
 			&scale_from::<U32>(&scale, Note(42)),
 			&[Note(42), Note(44), Note(45), Note(47)]
 		);
-		
-		assert_slice_eq(
-			&scale_from::<U32>(&scale, Note(31)),
-			&[]
-		);
+
+		assert_slice_eq(&scale_from::<U32>(&scale, Note(31)), &[]);
 	}
 }

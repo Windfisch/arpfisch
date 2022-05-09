@@ -1,15 +1,15 @@
-use crate::grid_controllers::{GridButtonEvent, LightingMode, Color};
-use crate::tempo_detector::TempoDetector;
 use crate::arpeggiator::{ArpeggioData, ClockMode, RepeatMode};
+use crate::grid_controllers::{Color, GridButtonEvent, LightingMode};
+use crate::tempo_detector::TempoDetector;
 
 pub struct ConfigScreen {
-	tempo: TempoDetector,
+	tempo: TempoDetector
 }
 
 impl ConfigScreen {
 	pub fn new() -> ConfigScreen {
 		ConfigScreen {
-			tempo: TempoDetector::new(),
+			tempo: TempoDetector::new()
 		}
 	}
 
@@ -38,11 +38,8 @@ impl ConfigScreen {
 			Down(7, 2, _) => {
 				if !use_external_clock {
 					self.tempo.beat(time);
-					if self.tempo.time_per_beat() <= 48000 * 2
-						&& self.tempo.time_per_beat() >= 10
-					{
-						*time_between_midiclocks =
-							self.tempo.time_per_beat() as u64 / 24;
+					if self.tempo.time_per_beat() <= 48000 * 2 && self.tempo.time_per_beat() >= 10 {
+						*time_between_midiclocks = self.tempo.time_per_beat() as u64 / 24;
 					}
 				}
 			}
@@ -78,7 +75,7 @@ impl ConfigScreen {
 		pane_height: usize,
 		use_external_clock: bool,
 		external_clock_present: bool,
-		clock_mode: ClockMode,
+		clock_mode: ClockMode
 	) {
 		use LightingMode::*;
 
@@ -146,4 +143,3 @@ impl ConfigScreen {
 		}
 	}
 }
-
