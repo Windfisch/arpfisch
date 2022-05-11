@@ -2,21 +2,25 @@
 
 use crate::arpeggiator::*;
 use crate::grid_controllers::*;
+use crate::midi::Note;
 
 mod config;
 mod edit;
 mod pattern_select;
+mod scale_select;
 mod sliders;
 
 use config::ConfigScreen;
 use edit::EditScreen;
 use pattern_select::PatternSelectScreen;
+use scale_select::ScaleSelectScreen;
 use sliders::SlidersScreen;
 
 enum ScreenOverlay {
 	Sliders(SlidersScreen),
 	PatternSelect(PatternSelectScreen),
 	Config(ConfigScreen),
+	ScaleSelect(ScaleSelectScreen),
 	None
 }
 
@@ -48,6 +52,7 @@ impl GuiController {
 		time_between_midiclocks: &mut u64,
 		chord_hold: &mut bool,
 		chord_settle_time: &mut u64,
+		scale: &mut heapless::Vec<Note, heapless::consts::U16>,
 		fader_values: &mut [Option<(&mut f32, std::ops::RangeInclusive<f32>)>],
 		time: u64
 	) {
@@ -59,6 +64,7 @@ impl GuiController {
 			ScreenOverlay::Config(_) => Some(0),
 			ScreenOverlay::Sliders(_) => Some(1),
 			ScreenOverlay::PatternSelect(_) => Some(2),
+			ScreenOverlay::ScaleSelect(_) => Some(3),
 			ScreenOverlay::None => None
 		};
 
@@ -80,6 +86,10 @@ impl GuiController {
 						2 => {
 							self.screen_overlay =
 								ScreenOverlay::PatternSelect(PatternSelectScreen::new())
+						}
+						3 => {
+							self.screen_overlay =
+								ScreenOverlay::ScaleSelect(ScaleSelectScreen::new())
 						}
 						_ => ()
 					}
@@ -113,6 +123,9 @@ impl GuiController {
 				ScreenOverlay::PatternSelect(ref mut screen) => {
 					screen.handle_input(event, n_patterns, active_pattern, active_arp);
 				}
+				ScreenOverlay::ScaleSelect(ref mut screen) => {
+					screen.handle_input(event, scale);
+				}
 			}
 		}
 	}
@@ -127,6 +140,7 @@ impl GuiController {
 		external_clock_present: bool,
 		clock_mode: ClockMode,
 		chord_hold: bool,
+		scale: &heapless::Vec<Note, heapless::consts::U16>,
 		fader_values: &[Option<(f32, std::ops::RangeInclusive<f32>)>],
 		time: u64,
 		mut set_led: impl FnMut((u8, u8), LightingMode)
@@ -169,6 +183,9 @@ impl GuiController {
 			ScreenOverlay::PatternSelect(ref mut screen) => {
 				right_buttons[2] = Some(MENU_SELECTED);
 				screen.draw(grid_and_top, active_pattern, active_arp)
+			}
+			ScreenOverlay::ScaleSelect(ref mut screen) => {
+				screen.draw(grid_and_top, scale);
 			}
 		}
 

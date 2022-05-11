@@ -134,7 +134,7 @@ pub struct Arpeggiator {
 	stable_chord: heapless::Vec<Note, U16>,
 	chord_next_update_time: Option<u64>,
 	step: usize,
-	scale: Option<heapless::Vec<Note, U16>>
+	pub scale: heapless::Vec<Note, U16>
 }
 
 #[derive(Copy, Clone)]
@@ -183,44 +183,40 @@ impl Arpeggiator {
 			chord_settle_time: 0,
 			chord_hold: false,
 			chord_hold_old: false,
-			scale: None
+			scale: heapless::Vec::new()
 		}
 	}
 
 	pub fn note_on(&mut self, note: Note, time: u64) {
-		match self.scale {
-			None => {
-				if self.chord.iter().position(|n| *n == note).is_none() {
-					self.chord.push(note).ok();
-					self.chord.sort();
-					self.chord_next_update_time = Some(time + self.chord_settle_time);
-				}
+		if self.scale.is_empty() {
+			if self.chord.iter().position(|n| *n == note).is_none() {
+				self.chord.push(note).ok();
+				self.chord.sort();
+				self.chord_next_update_time = Some(time + self.chord_settle_time);
 			}
-			Some(ref scale) => {
-				self.stable_chord = scale_from(&scale, note);
+			else {
+				self.stable_chord = scale_from(&self.scale, note);
 			}
 		}
 	}
 	pub fn note_off(&mut self, note: Note, time: u64) {
-		match self.scale {
-			None => {
-				if let Some(i) = self.chord.iter().position(|n| *n == note) {
-					self.chord.swap_remove(i);
-					self.chord.sort();
-					if self.chord_hold && self.chord.is_empty() {
-						self.chord_next_update_time = None;
-					}
-					else {
-						self.chord_next_update_time = Some(time + self.chord_settle_time);
-					}
+		if self.scale.is_empty() {
+			if let Some(i) = self.chord.iter().position(|n| *n == note) {
+				self.chord.swap_remove(i);
+				self.chord.sort();
+				if self.chord_hold && self.chord.is_empty() {
+					self.chord_next_update_time = None;
+				}
+				else {
+					self.chord_next_update_time = Some(time + self.chord_settle_time);
 				}
 			}
-			Some(_) => {
-				if !self.chord_hold {
-					if let Some(bottom_note) = self.stable_chord.first() {
-						if *bottom_note == note {
-							self.stable_chord.clear();
-						}
+		}
+		else {
+			if !self.chord_hold {
+				if let Some(bottom_note) = self.stable_chord.first() {
+					if *bottom_note == note {
+						self.stable_chord.clear();
 					}
 				}
 			}

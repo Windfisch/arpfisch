@@ -124,6 +124,7 @@ impl JackDriver {
 					time_between_midiclocks,
 					&mut arp_instance.arp.chord_hold,
 					&mut arp_instance.arp.chord_settle_time,
+					&mut arp_instance.arp.scale,
 					&mut [
 						Some((&mut arp_instance.arp.global_length_modifier, 0.0..=2.0)),
 						None,
@@ -237,6 +238,7 @@ impl JackDriver {
 			external_clock_present,
 			self.clock_mode,
 			arp_instance.arp.chord_hold,
+			&arp_instance.arp.scale,
 			&[
 				Some((arp_instance.arp.global_length_modifier, 0.0..=2.0)),
 				None,
