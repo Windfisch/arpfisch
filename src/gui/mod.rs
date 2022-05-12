@@ -52,7 +52,7 @@ impl GuiController {
 		time_between_midiclocks: &mut u64,
 		chord_hold: &mut bool,
 		chord_settle_time: &mut u64,
-		scale: &mut heapless::Vec<Note, heapless::consts::U16>,
+		scale: &mut heapless::Vec<Note, 16>,
 		fader_values: &mut [Option<(&mut f32, std::ops::RangeInclusive<f32>)>],
 		time: u64
 	) {
@@ -140,7 +140,7 @@ impl GuiController {
 		external_clock_present: bool,
 		clock_mode: ClockMode,
 		chord_hold: bool,
-		scale: &heapless::Vec<Note, heapless::consts::U16>,
+		scale: &heapless::Vec<Note, 16>,
 		fader_values: &[Option<(f32, std::ops::RangeInclusive<f32>)>],
 		time: u64,
 		mut set_led: impl FnMut((u8, u8), LightingMode)

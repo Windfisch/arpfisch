@@ -2,7 +2,7 @@
 
 use crate::midi::{Note, NoteEvent};
 use crate::tempo_detector::TempoDetector;
-use heapless::{self, consts::*};
+use heapless;
 
 #[derive(Clone)]
 pub enum RepeatMode {
@@ -84,7 +84,7 @@ impl Entry {
 #[derive(Clone)]
 pub struct ArpeggioData {
 	pub repeat_mode: RepeatMode,
-	pub pattern: heapless::Vec<heapless::Vec<Entry, U16>, U64>
+	pub pattern: heapless::Vec<heapless::Vec<Entry, 16>, 64>
 }
 
 impl ArpeggioData {
@@ -130,11 +130,11 @@ pub struct Arpeggiator {
 	pub chord_settle_time: u64,
 	pub chord_hold: bool,
 	chord_hold_old: bool, // FIXME this should really not be there... use a setter instead
-	chord: heapless::Vec<Note, U16>,
-	stable_chord: heapless::Vec<Note, U16>,
+	chord: heapless::Vec<Note, 16>,
+	stable_chord: heapless::Vec<Note, 16>,
 	chord_next_update_time: Option<u64>,
 	step: usize,
-	pub scale: heapless::Vec<Note, U16>
+	pub scale: heapless::Vec<Note, 16>
 }
 
 #[derive(Copy, Clone)]
@@ -144,10 +144,10 @@ pub enum ClockMode {
 	Auto
 }
 
-fn scale_from<Len: heapless::ArrayLength<Note>>(
+fn scale_from<const LEN: usize>(
 	scale: &[Note],
 	bottom: Note
-) -> heapless::Vec<Note, Len> {
+) -> heapless::Vec<Note, LEN> {
 	match scale
 		.iter()
 		.position(|note| (note.0 as isize - bottom.0 as isize) % 12 == 0)
@@ -276,7 +276,7 @@ pub struct ArpeggiatorInstance {
 	pub active_pattern: usize,
 	pub arp: Arpeggiator,
 	tempo: TempoDetector,
-	pending_events: heapless::Vec<(u64, NoteEvent), U32>
+	pending_events: heapless::Vec<(u64, NoteEvent), 32>
 }
 
 impl ArpeggiatorInstance {
@@ -420,25 +420,24 @@ mod tests {
 	pub fn scale_from() {
 		use super::scale_from;
 		use super::Note;
-		use super::U32;
 
 		let scale = [Note(30), Note(32), Note(33), Note(35)];
 
 		assert_slice_eq(
-			&scale_from::<U32>(&scale, Note(30)),
+			&scale_from::<32>(&scale, Note(30)),
 			&[Note(30), Note(32), Note(33), Note(35)]
 		);
 
 		assert_slice_eq(
-			&scale_from::<U32>(&scale, Note(33)),
+			&scale_from::<32>(&scale, Note(33)),
 			&[Note(33), Note(35), Note(42), Note(44)]
 		);
 
 		assert_slice_eq(
-			&scale_from::<U32>(&scale, Note(42)),
+			&scale_from::<32>(&scale, Note(42)),
 			&[Note(42), Note(44), Note(45), Note(47)]
 		);
 
-		assert_slice_eq(&scale_from::<U32>(&scale, Note(31)), &[]);
+		assert_slice_eq(&scale_from::<32>(&scale, Note(31)), &[]);
 	}
 }

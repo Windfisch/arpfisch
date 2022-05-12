@@ -4,7 +4,6 @@ use crate::arpeggiator::{ArpeggiatorInstance, ClockMode};
 use crate::grid_controllers::launchpad_x::LaunchpadX;
 use crate::grid_controllers::GridController;
 use heapless;
-use heapless::consts::*;
 use jack::*;
 
 use crate::gui::GuiController; // FIXME this should not be in the jack driver
@@ -16,7 +15,7 @@ struct ArpContext {
 	arp_instance: ArpeggiatorInstance
 }
 
-type TransportEventVec = heapless::Vec<(u64, NoteEvent), U16>;
+type TransportEventVec = heapless::Vec<(u64, NoteEvent), 16>;
 
 pub struct JackDriver {
 	ui_in_port: Port<MidiIn>,
@@ -97,7 +96,7 @@ impl JackDriver {
 
 	pub fn process_ui_input(&mut self, use_external_clock: bool, scope: &ProcessScope) {
 		// FIXME magic (huge) constant
-		let mut active_patterns: heapless::Vec<usize, U64> = self
+		let mut active_patterns: heapless::Vec<usize, 64> = self
 			.arp_contexts
 			.iter()
 			.map(|context| context.arp_instance.active_pattern)
@@ -223,7 +222,7 @@ impl JackDriver {
 
 		let ui = &mut self.ui;
 		// FIXME magic (huge) constant
-		let active_patterns: heapless::Vec<usize, U64> = self
+		let active_patterns: heapless::Vec<usize, 64> = self
 			.arp_contexts
 			.iter()
 			.map(|context| context.arp_instance.active_pattern)
@@ -293,7 +292,7 @@ impl JackDriver {
 				|events| {
 					for event in events {
 						println!("event: {:?}", event);
-						let bytes: heapless::Vec<_, U4> = match event.1 {
+						let bytes: heapless::Vec<_, 4> = match event.1 {
 							NoteEvent::NoteOn(note, velo) => {
 								heapless::Vec::from_slice(&[0x90 | out_channel, note.0, velo])
 							}

@@ -47,7 +47,7 @@ impl ScaleSelectScreen {
 	pub fn handle_input(
 		&mut self,
 		event: GridButtonEvent,
-		scale: &mut heapless::Vec<Note, heapless::consts::U16>
+		scale: &mut heapless::Vec<Note, 16>
 	) {
 		use GridButtonEvent::*;
 
@@ -72,7 +72,7 @@ impl ScaleSelectScreen {
 	pub fn draw(
 		&mut self,
 		array: &mut [[Option<LightingMode>; 9]; 8],
-		scale: &heapless::Vec<Note, heapless::consts::U16>
+		scale: &heapless::Vec<Note, 16>
 	) {
 		use LightingMode::*;
 
