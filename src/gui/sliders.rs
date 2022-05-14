@@ -1,3 +1,5 @@
+// this file is part of arpfisch. For copyright and licensing details, see main.rs
+
 use crate::grid_controllers::{Color, GridButtonEvent, LightingMode};
 
 pub struct SlidersScreen {

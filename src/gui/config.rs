@@ -1,3 +1,5 @@
+// this file is part of arpfisch. For copyright and licensing details, see main.rs
+
 use crate::arpeggiator::{ArpeggioData, ClockMode, RepeatMode};
 use crate::grid_controllers::{Color, GridButtonEvent, LightingMode};
 use crate::tempo_detector::TempoDetector;
