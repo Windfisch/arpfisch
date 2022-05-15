@@ -146,27 +146,13 @@ impl JackDriver {
 		}
 	}
 
-	/// Also does clock generation
 	pub fn process_arp_input(
 		&mut self,
-		use_external_clock: bool,
 		scope: &ProcessScope
-	) -> TransportEventVec {
-		let mut transport_events = TransportEventVec::new();
-		for (i, context) in self.arp_contexts.iter_mut().enumerate() {
+	) {
+		for context in self.arp_contexts.iter_mut() {
 			for event in context.in_port.iter(scope) {
 				let timestamp = self.time + event.time as u64;
-
-				if event.bytes[0] == 0xFA && i == 0 {
-					transport_events.push((timestamp, NoteEvent::Start)).ok();
-				}
-				if event.bytes[0] == 0xF8 && i == 0 {
-					self.last_midiclock_received = self.time;
-
-					if use_external_clock {
-						transport_events.push((timestamp, NoteEvent::Clock)).ok();
-					}
-				}
 
 				if event.bytes[0] == 0x90 | self.channel {
 					context
@@ -181,6 +167,29 @@ impl JackDriver {
 						.note_off(Note(event.bytes[1]), timestamp);
 				}
 			}
+		}
+	}
+
+	pub fn process_clocks(
+		&mut self,
+		use_external_clock: bool,
+		scope: &ProcessScope
+	) -> TransportEventVec {
+		let mut transport_events = TransportEventVec::new();
+
+		for event in self.arp_contexts[0].in_port.iter(scope) {
+				let timestamp = self.time + event.time as u64;
+
+				if event.bytes[0] == 0xFA {
+					transport_events.push((timestamp, NoteEvent::Start)).ok();
+				}
+				if event.bytes[0] == 0xF8 {
+					self.last_midiclock_received = self.time;
+
+					if use_external_clock {
+						transport_events.push((timestamp, NoteEvent::Clock)).ok();
+					}
+				}
 		}
 
 		if !use_external_clock {
@@ -323,10 +332,9 @@ impl JackDriver {
 			ClockMode::Auto => external_clock_present
 		};
 
+		let transport_events = self.process_clocks(use_external_clock, scope);
+
 		self.process_ui_input(use_external_clock, scope);
-
-		let transport_events = self.process_arp_input(use_external_clock, scope);
-
 		self.process_ui_output(
 			&transport_events,
 			use_external_clock,
@@ -334,6 +342,7 @@ impl JackDriver {
 			scope
 		);
 
+		self.process_arp_input(scope);
 		self.process_arp_output(&transport_events, scope);
 
 		self.time += scope.n_frames() as u64;
