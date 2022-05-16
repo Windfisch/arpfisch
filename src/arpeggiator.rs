@@ -194,9 +194,9 @@ impl Arpeggiator {
 				self.chord.sort();
 				self.chord_next_update_time = Some(time + self.chord_settle_time);
 			}
-			else {
-				self.stable_chord = scale_from(&self.scale, note);
-			}
+		}
+		else {
+			self.stable_chord = scale_from(&self.scale, note);
 		}
 	}
 	pub fn note_off(&mut self, note: Note, time: u64) {
