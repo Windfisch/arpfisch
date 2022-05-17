@@ -146,30 +146,6 @@ impl JackDriver {
 		}
 	}
 
-	pub fn process_arp_input(
-		&mut self,
-		scope: &ProcessScope
-	) {
-		for context in self.arp_contexts.iter_mut() {
-			for event in context.in_port.iter(scope) {
-				let timestamp = self.time + event.time as u64;
-
-				if event.bytes[0] == 0x90 | self.channel {
-					context
-						.arp_instance
-						.arp
-						.note_on(Note(event.bytes[1]), timestamp);
-				}
-				if event.bytes[0] == 0x80 | self.channel {
-					context
-						.arp_instance
-						.arp
-						.note_off(Note(event.bytes[1]), timestamp);
-				}
-			}
-		}
-	}
-
 	pub fn process_clocks(
 		&mut self,
 		use_external_clock: bool,
@@ -270,12 +246,48 @@ impl JackDriver {
 		);
 	}
 
-	pub fn process_arp_output(
-		&mut self,
-		transport_events: &TransportEventVec,
-		scope: &ProcessScope
-	) {
-		for context in self.arp_contexts.iter_mut() {
+	pub fn process(&mut self, client: &jack::Client, scope: &ProcessScope) {
+		let external_clock_present = self.time - self.last_midiclock_received <= 48000;
+		let use_external_clock = match self.clock_mode {
+			ClockMode::Internal => false,
+			ClockMode::External => true,
+			ClockMode::Auto => external_clock_present
+		};
+
+		let transport_events = self.process_clocks(use_external_clock, scope);
+
+		self.process_ui_input(use_external_clock, scope);
+		self.process_ui_output(
+			&transport_events,
+			use_external_clock,
+			external_clock_present,
+			scope
+		);
+
+		let n_contexts = self.arp_contexts.len();
+		// TODO FIXME clean this up
+		for i in 0..n_contexts {
+			let (context, context_tail) = self.arp_contexts[i..].split_first_mut().unwrap();
+
+			// input
+			for event in context.in_port.iter(scope) {
+				let timestamp = self.time + event.time as u64;
+
+				if event.bytes[0] == 0x90 | self.channel {
+					context
+						.arp_instance
+						.arp
+						.note_on(Note(event.bytes[1]), timestamp);
+				}
+				if event.bytes[0] == 0x80 | self.channel {
+					context
+						.arp_instance
+						.arp
+						.note_off(Note(event.bytes[1]), timestamp);
+				}
+			}
+
+			// tick
 			for (timestamp, event) in transport_events.iter() {
 				context
 					.arp_instance
@@ -291,8 +303,8 @@ impl JackDriver {
 					_ => ()
 				}
 			}
-		}
-		for context in self.arp_contexts.iter_mut() {
+			
+			// output
 			let mut writer = context.out_port.writer(scope);
 			let time = self.time;
 			let out_channel = self.out_channel;
@@ -300,7 +312,21 @@ impl JackDriver {
 				self.time + (scope.n_frames() as u64),
 				|events| {
 					for event in events {
-						println!("event: {:?}", event);
+						for j in (i+1) .. n_contexts {
+							let other_context = &mut context_tail[j - (i+1)];
+							if j == i+1 { // TODO FIXME
+								match event.1 {
+									NoteEvent::NoteOn(note, _) => {
+										other_context.arp_instance.arp.note_on(note, event.0);
+									}
+									NoteEvent::NoteOff(note) => {
+										other_context.arp_instance.arp.note_off(note, event.0);
+									}
+									_ => ()
+								}
+							}
+						}
+
 						let bytes: heapless::Vec<_, 4> = match event.1 {
 							NoteEvent::NoteOn(note, velo) => {
 								heapless::Vec::from_slice(&[0x90 | out_channel, note.0, velo])
@@ -322,28 +348,6 @@ impl JackDriver {
 				}
 			);
 		}
-	}
-
-	pub fn process(&mut self, client: &jack::Client, scope: &ProcessScope) {
-		let external_clock_present = self.time - self.last_midiclock_received <= 48000;
-		let use_external_clock = match self.clock_mode {
-			ClockMode::Internal => false,
-			ClockMode::External => true,
-			ClockMode::Auto => external_clock_present
-		};
-
-		let transport_events = self.process_clocks(use_external_clock, scope);
-
-		self.process_ui_input(use_external_clock, scope);
-		self.process_ui_output(
-			&transport_events,
-			use_external_clock,
-			external_clock_present,
-			scope
-		);
-
-		self.process_arp_input(scope);
-		self.process_arp_output(&transport_events, scope);
 
 		self.time += scope.n_frames() as u64;
 
