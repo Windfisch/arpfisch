@@ -329,7 +329,6 @@ impl ArpeggiatorInstance {
 		time_limit: u64,
 		mut callback: impl FnMut(&[(u64, NoteEvent)])
 	) {
-		let before_sort = format!("{:?}", self.pending_events);
 		self.pending_events.sort();
 		let end = self
 			.pending_events
@@ -339,12 +338,6 @@ impl ArpeggiatorInstance {
 			.map(|(i, _)| i)
 			.next()
 			.unwrap_or(self.pending_events.len());
-
-		if end != 0 {
-			println!("==== {}", end);
-			println!("{}", before_sort);
-			println!("{:?}", self.pending_events);
-		}
 
 		callback(&self.pending_events[0..end]);
 
