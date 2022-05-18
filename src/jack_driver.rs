@@ -33,6 +33,7 @@ pub struct JackDriver {
 	time_between_midiclocks: u64,
 	clock_mode: ClockMode, // FIXME this should go to MasterController or something like that
 
+	routing_matrix: Vec<Vec<bool>>,
 	active_arp: usize,
 	arp_contexts: Vec<ArpContext>
 }
@@ -68,7 +69,8 @@ impl JackDriver {
 			next_midiclock_to_send: 0,
 			time_between_midiclocks: 24000 / 24,
 			clock_mode: ClockMode::Auto,
-			arp_contexts
+			arp_contexts,
+			routing_matrix: vec![vec![false; n_arps]; n_arps]
 		};
 		Ok(driver)
 	}
@@ -308,13 +310,14 @@ impl JackDriver {
 			let mut writer = context.out_port.writer(scope);
 			let time = self.time;
 			let out_channel = self.out_channel;
+			let routing_matrix = &self.routing_matrix;
 			context.arp_instance.process_pending_events(
 				self.time + (scope.n_frames() as u64),
 				|events| {
 					for event in events {
 						for j in (i+1) .. n_contexts {
 							let other_context = &mut context_tail[j - (i+1)];
-							if j == i+1 { // TODO FIXME
+							if routing_matrix[i][j] {
 								match event.1 {
 									NoteEvent::NoteOn(note, _) => {
 										other_context.arp_instance.arp.note_on(note, event.0);
