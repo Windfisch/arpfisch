@@ -185,6 +185,7 @@ impl GuiController {
 				screen.draw(grid_and_top, active_pattern, active_arp)
 			}
 			ScreenOverlay::ScaleSelect(ref mut screen) => {
+				right_buttons[3] = Some(MENU_SELECTED);
 				screen.draw(grid_and_top, scale);
 			}
 		}
