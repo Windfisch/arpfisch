@@ -161,6 +161,13 @@ impl GuiController {
 			Solid(Color::Color(300, 0.1))
 		});
 
+		right_buttons[3] = if scale.is_empty() {
+			None
+		}
+		else {
+			Some(Solid(Color::Color(215, 0.7)))
+		};
+
 		match self.screen_overlay {
 			ScreenOverlay::None => {
 				self.edit_screen.draw(grid_and_top, pattern, step, time);
