@@ -4,7 +4,7 @@ use crate::midi::{Note, NoteEvent};
 use crate::tempo_detector::TempoDetector;
 use heapless;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum RepeatMode {
 	Clamp,
 	Repeat(i32),

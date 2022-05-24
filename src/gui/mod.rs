@@ -26,6 +26,7 @@ enum ScreenOverlay {
 
 pub struct GuiController {
 	state_down_time: u64,
+	flash_scale_button_until: u64,
 
 	edit_screen: EditScreen,
 	screen_overlay: ScreenOverlay
@@ -35,6 +36,7 @@ impl GuiController {
 	pub fn new() -> GuiController {
 		GuiController {
 			edit_screen: EditScreen::new(),
+			flash_scale_button_until: 0,
 			screen_overlay: ScreenOverlay::None,
 			state_down_time: 0
 		}
@@ -129,8 +131,12 @@ impl GuiController {
 			}
 		}
 	
-		if !scale.is_empty() {
+		if !scale.is_empty() && pattern.repeat_mode != RepeatMode::Repeat(12) {
 			pattern.repeat_mode = RepeatMode::Repeat(12);
+			match self.screen_overlay {
+				ScreenOverlay::ScaleSelect(_) => (),
+				_ => self.flash_scale_button_until = time + 2 * 48000
+			}
 		}
 	}
 
@@ -165,12 +171,23 @@ impl GuiController {
 			Solid(Color::Color(300, 0.1))
 		});
 
-		right_buttons[3] = if scale.is_empty() {
-			None
-		}
-		else {
-			Some(Solid(Color::Color(215, 0.7)))
-		};
+		right_buttons[3] =
+			if time < self.flash_scale_button_until {
+				if (time / (48000/10)) % 2 == 0 {
+					Some(Off)
+				}
+				else {
+					Some(Solid(Color::Color(215, 0.7)))
+				}
+			}
+			else {
+				if scale.is_empty() {
+					None
+				}
+				else {
+					Some(Solid(Color::Color(215, 0.7)))
+				}
+			};
 
 		match self.screen_overlay {
 			ScreenOverlay::None => {
