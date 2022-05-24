@@ -128,6 +128,10 @@ impl GuiController {
 				}
 			}
 		}
+	
+		if !scale.is_empty() {
+			pattern.repeat_mode = RepeatMode::Repeat(12);
+		}
 	}
 
 	pub fn draw(
