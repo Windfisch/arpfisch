@@ -3,7 +3,10 @@
 use crate::grid_controllers::{Color, GridButtonEvent, LightingMode};
 use crate::midi::Note;
 
-pub struct ScaleSelectScreen;
+pub struct ScaleSelectScreen {
+	last_tap: (Note, u64),
+	octave: Option<u8>
+}
 
 const MIDI_C0: u8 = 0;
 
@@ -44,27 +47,68 @@ fn coord_to_note(coord: (usize, usize)) -> Option<Note> {
 }
 
 impl ScaleSelectScreen {
-	pub fn new() -> ScaleSelectScreen { ScaleSelectScreen {} }
+	pub fn new() -> ScaleSelectScreen {
+		ScaleSelectScreen {
+			last_tap: (Note(0), 0),
+			octave: None
+		}
+	}
+
+	fn init_octave(&mut self, scale_base_override: Option<Note>) {
+		if self.octave.is_none() {
+			if let Some(note) = scale_base_override {
+				self.octave = Some(note.0 / 12)
+			}
+			else {
+				self.octave = Some(5);
+			}
+		}
+	}
 
 	pub fn handle_input(
 		&mut self,
 		event: GridButtonEvent,
-		scale: &mut heapless::Vec<Note, 16>
+		scale: &mut heapless::Vec<Note, 16>,
+		scale_base_override: &mut Option<Note>,
+		time: u64
 	) {
 		use GridButtonEvent::*;
 
+		self.init_octave(*scale_base_override);
+
 		match event {
+			Down(x, 7, _) => {
+				if let Some(note) = *scale_base_override {
+					if x < 8 {
+						self.octave = Some(x + 2); // there are 10.6 octaves available, but we only support the middle eight of them
+						*scale_base_override = Some(Note(note.0 % 12).transpose(self.octave.unwrap() as i32 * 12).unwrap());
+					}
+				}
+			}
 			Down(x, y, _) => {
 				if let Some(note) = coord_to_note((x.into(), y.into())) {
-					let index = scale.iter().position(|n| *n == note);
+					let is_doubletap = note == self.last_tap.0 && time < self.last_tap.1 + 48000 / 4;
 
-					if let Some(index) = index {
-						scale.swap_remove(index);
+					if let Some(index) = scale.iter().position(|n| *n == note) {
+						if !is_doubletap {
+							scale.swap_remove(index);
+							if let Some(scale_base_override_note) = *scale_base_override {
+								if scale_base_override_note.0 % 12 == note.0 {
+									*scale_base_override = None;
+								}
+							}
+						}
 					}
 					else {
 						scale.push(note).unwrap();
 					}
 					scale.sort();
+
+					if is_doubletap {
+						*scale_base_override = Some(note.transpose(self.octave.unwrap() as i32 * 12).unwrap());
+					}
+
+					self.last_tap = (note, time);
 				}
 			}
 			_ => ()
@@ -74,20 +118,41 @@ impl ScaleSelectScreen {
 	pub fn draw(
 		&mut self,
 		array: &mut [[Option<LightingMode>; 9]; 8],
-		scale: &heapless::Vec<Note, 16>
+		scale: &heapless::Vec<Note, 16>,
+		scale_base_override: Option<Note>
 	) {
 		use LightingMode::*;
+
+		let bar_length = if let Some(scale_base_override) = scale_base_override {
+			(scale_base_override.0 / 12 - 1).clamp(0, 8) as usize
+		}
+		else {
+			0
+		};
+		
+		for i in 0..bar_length {
+			array[i][7] = Some(Solid(Color::Color(60, 0.7)));
+		}
 
 		for i in 0..12 {
 			let (x, y, black) = note_to_coord(Note(i));
 			let selected = scale.iter().find(|n| n.0 == i).is_some();
+			let is_scale_base_override = if let Some(scale_base_override) = scale_base_override {
+				scale_base_override.0 % 12 == i
+			}
+			else {
+				false
+			};
 			let base_color = if !black {
 				Color::White(1.0)
 			}
 			else {
 				Color::Color(240, 0.4)
 			};
-			let color = if selected {
+			let color = if is_scale_base_override {
+				Color::Color(60, 0.7)
+			}
+			else if selected {
 				Color::Color(0, 0.7)
 			}
 			else {

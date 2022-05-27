@@ -26,6 +26,7 @@ enum ScreenOverlay {
 
 pub struct GuiController {
 	state_down_time: u64,
+	flash_scale_button_until: u64,
 
 	edit_screen: EditScreen,
 	screen_overlay: ScreenOverlay
@@ -35,6 +36,7 @@ impl GuiController {
 	pub fn new() -> GuiController {
 		GuiController {
 			edit_screen: EditScreen::new(),
+			flash_scale_button_until: 0,
 			screen_overlay: ScreenOverlay::None,
 			state_down_time: 0
 		}
@@ -53,6 +55,7 @@ impl GuiController {
 		chord_hold: &mut bool,
 		chord_settle_time: &mut u64,
 		scale: &mut heapless::Vec<Note, 16>,
+		scale_base_override: &mut Option<Note>,
 		fader_values: &mut [Option<(&mut f32, std::ops::RangeInclusive<f32>)>],
 		time: u64
 	) {
@@ -70,8 +73,13 @@ impl GuiController {
 
 		match event {
 			Down(8, 7, _) => {
-				*chord_hold = !*chord_hold;
-				*chord_settle_time = if *chord_hold { 48000 / 40 } else { 0 };
+				if scale_base_override.is_none() {
+					*chord_hold = !*chord_hold;
+					*chord_settle_time = if *chord_hold { 48000 / 40 } else { 0 };
+				}
+				else {
+					self.flash_scale_button_until = time + 2 * 48000;
+				}
 			}
 			Down(8, y, _) => {
 				self.state_down_time = time;
@@ -124,8 +132,16 @@ impl GuiController {
 					screen.handle_input(event, n_patterns, active_pattern, active_arp);
 				}
 				ScreenOverlay::ScaleSelect(ref mut screen) => {
-					screen.handle_input(event, scale);
+					screen.handle_input(event, scale, scale_base_override, time);
 				}
+			}
+		}
+	
+		if !scale.is_empty() && pattern.repeat_mode != RepeatMode::Repeat(12) {
+			pattern.repeat_mode = RepeatMode::Repeat(12);
+			match self.screen_overlay {
+				ScreenOverlay::ScaleSelect(_) => (),
+				_ => self.flash_scale_button_until = time + 2 * 48000
 			}
 		}
 	}
@@ -141,6 +157,7 @@ impl GuiController {
 		clock_mode: ClockMode,
 		chord_hold: bool,
 		scale: &heapless::Vec<Note, 16>,
+		scale_base_override: Option<Note>,
 		fader_values: &[Option<(f32, std::ops::RangeInclusive<f32>)>],
 		time: u64,
 		mut set_led: impl FnMut((u8, u8), LightingMode)
@@ -154,12 +171,37 @@ impl GuiController {
 		let (right_buttons, grid_and_top) = (&mut array).split_last_mut().unwrap();
 		let grid_and_top = grid_and_top.try_into().unwrap();
 
-		right_buttons[7] = Some(if chord_hold {
-			Solid(Color::Color(215, 0.7))
-		}
-		else {
-			Solid(Color::Color(300, 0.1))
-		});
+		right_buttons[7] = Some(
+			if scale_base_override.is_none() {
+				if chord_hold {
+					Solid(Color::Color(215, 0.7))
+				}
+				else {
+					Solid(Color::Color(300, 0.1))
+				}
+			}
+			else {
+				Solid(Color::Color(60, 0.7))
+			}
+		);
+
+		right_buttons[3] =
+			if time < self.flash_scale_button_until {
+				if (time / (48000/10)) % 2 == 0 {
+					Some(Off)
+				}
+				else {
+					Some(Solid(Color::Color(215, 0.7)))
+				}
+			}
+			else {
+				if scale.is_empty() {
+					None
+				}
+				else {
+					Some(Solid(Color::Color(215, 0.7)))
+				}
+			};
 
 		match self.screen_overlay {
 			ScreenOverlay::None => {
@@ -185,7 +227,8 @@ impl GuiController {
 				screen.draw(grid_and_top, active_pattern, active_arp)
 			}
 			ScreenOverlay::ScaleSelect(ref mut screen) => {
-				screen.draw(grid_and_top, scale);
+				right_buttons[3] = Some(MENU_SELECTED);
+				screen.draw(grid_and_top, scale, scale_base_override);
 			}
 		}
 
