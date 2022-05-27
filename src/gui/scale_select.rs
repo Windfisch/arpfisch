@@ -3,7 +3,9 @@
 use crate::grid_controllers::{Color, GridButtonEvent, LightingMode};
 use crate::midi::Note;
 
-pub struct ScaleSelectScreen;
+pub struct ScaleSelectScreen {
+	last_tap: (Note, u64)
+}
 
 const MIDI_C0: u8 = 0;
 
@@ -44,27 +46,44 @@ fn coord_to_note(coord: (usize, usize)) -> Option<Note> {
 }
 
 impl ScaleSelectScreen {
-	pub fn new() -> ScaleSelectScreen { ScaleSelectScreen {} }
+	pub fn new() -> ScaleSelectScreen {
+		ScaleSelectScreen {
+			last_tap: (Note(0), 0)
+		}
+	}
 
 	pub fn handle_input(
 		&mut self,
 		event: GridButtonEvent,
-		scale: &mut heapless::Vec<Note, 16>
+		scale: &mut heapless::Vec<Note, 16>,
+		scale_base_override: &mut Option<Note>,
+		time: u64
 	) {
 		use GridButtonEvent::*;
 
 		match event {
 			Down(x, y, _) => {
 				if let Some(note) = coord_to_note((x.into(), y.into())) {
-					let index = scale.iter().position(|n| *n == note);
+					let is_doubletap = note == self.last_tap.0 && time < self.last_tap.1 + 48000 / 4;
 
-					if let Some(index) = index {
-						scale.swap_remove(index);
+					if let Some(index) = scale.iter().position(|n| *n == note) {
+						if !is_doubletap {
+							scale.swap_remove(index);
+							if *scale_base_override == Some(note) {
+								*scale_base_override = None;
+							}
+						}
 					}
 					else {
 						scale.push(note).unwrap();
 					}
 					scale.sort();
+
+					if is_doubletap {
+						*scale_base_override = Some(note);
+					}
+
+					self.last_tap = (note, time);
 				}
 			}
 			_ => ()
@@ -74,7 +93,8 @@ impl ScaleSelectScreen {
 	pub fn draw(
 		&mut self,
 		array: &mut [[Option<LightingMode>; 9]; 8],
-		scale: &heapless::Vec<Note, 16>
+		scale: &heapless::Vec<Note, 16>,
+		scale_base_override: Option<Note>
 	) {
 		use LightingMode::*;
 
@@ -87,7 +107,10 @@ impl ScaleSelectScreen {
 			else {
 				Color::Color(240, 0.4)
 			};
-			let color = if selected {
+			let color = if scale_base_override == Some(Note(i)) {
+				Color::Color(60, 0.7)
+			}
+			else if selected {
 				Color::Color(0, 0.7)
 			}
 			else {

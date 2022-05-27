@@ -134,7 +134,9 @@ pub struct Arpeggiator {
 	stable_chord: heapless::Vec<Note, 16>,
 	chord_next_update_time: Option<u64>,
 	step: usize,
-	pub scale: heapless::Vec<Note, 16>
+	pub scale: heapless::Vec<Note, 16>,
+	pub scale_base_override: Option<Note>,
+	scale_base_override_old: Option<Note> // meeeeh FIXME
 }
 
 #[derive(Copy, Clone)]
@@ -183,7 +185,9 @@ impl Arpeggiator {
 			chord_settle_time: 0,
 			chord_hold: false,
 			chord_hold_old: false,
-			scale: heapless::Vec::new()
+			scale: heapless::Vec::new(),
+			scale_base_override: None,
+			scale_base_override_old: None,
 		}
 	}
 
@@ -233,6 +237,15 @@ impl Arpeggiator {
 				self.chord_next_update_time = Some(time);
 			}
 			self.chord_hold_old = self.chord_hold;
+		}
+		if self.scale_base_override != self.scale_base_override_old {
+			if let Some(note) = self.scale_base_override {
+				self.stable_chord = scale_from(&self.scale, note);
+			}
+			else {
+				self.chord_next_update_time = Some(time);
+			}
+			self.scale_base_override_old = self.scale_base_override;
 		}
 		if let Some(chord_next_update_time) = self.chord_next_update_time {
 			if time >= chord_next_update_time {

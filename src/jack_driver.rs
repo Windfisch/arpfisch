@@ -124,6 +124,7 @@ impl JackDriver {
 					&mut arp_instance.arp.chord_hold,
 					&mut arp_instance.arp.chord_settle_time,
 					&mut arp_instance.arp.scale,
+					&mut arp_instance.arp.scale_base_override,
 					&mut [
 						Some((&mut arp_instance.arp.global_length_modifier, 0.0..=2.0)),
 						None,
@@ -247,6 +248,7 @@ impl JackDriver {
 			self.clock_mode,
 			arp_instance.arp.chord_hold,
 			&arp_instance.arp.scale,
+			arp_instance.arp.scale_base_override,
 			&[
 				Some((arp_instance.arp.global_length_modifier, 0.0..=2.0)),
 				None,
