@@ -199,7 +199,7 @@ impl Arpeggiator {
 				self.chord_next_update_time = Some(time + self.chord_settle_time);
 			}
 		}
-		else {
+		else if self.scale_base_override.is_none() {
 			self.stable_chord = scale_from(&self.scale, note);
 		}
 	}
@@ -216,7 +216,7 @@ impl Arpeggiator {
 				}
 			}
 		}
-		else {
+		else if self.scale_base_override.is_none() {
 			if !self.chord_hold {
 				if let Some(bottom_note) = self.stable_chord.first() {
 					if *bottom_note == note {
