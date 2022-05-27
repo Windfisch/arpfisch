@@ -9,16 +9,19 @@ mod edit;
 mod pattern_select;
 mod scale_select;
 mod sliders;
+mod routing;
 
 use config::ConfigScreen;
 use edit::EditScreen;
 use pattern_select::PatternSelectScreen;
 use scale_select::ScaleSelectScreen;
 use sliders::SlidersScreen;
+use routing::RoutingScreen;
 
 enum ScreenOverlay {
 	Sliders(SlidersScreen),
 	PatternSelect(PatternSelectScreen),
+	Routing(RoutingScreen),
 	Config(ConfigScreen),
 	ScaleSelect(ScaleSelectScreen),
 	None
@@ -57,6 +60,7 @@ impl GuiController {
 		scale: &mut heapless::Vec<Note, 16>,
 		scale_base_override: &mut Option<Note>,
 		fader_values: &mut [Option<(&mut f32, std::ops::RangeInclusive<f32>)>],
+		routing_matrix: &mut Vec<Vec<bool>>,
 		time: u64
 	) {
 		use GridButtonEvent::*;
@@ -67,7 +71,8 @@ impl GuiController {
 			ScreenOverlay::Config(_) => Some(0),
 			ScreenOverlay::Sliders(_) => Some(1),
 			ScreenOverlay::PatternSelect(_) => Some(2),
-			ScreenOverlay::ScaleSelect(_) => Some(3),
+			ScreenOverlay::Routing(_) => Some(3),
+			ScreenOverlay::ScaleSelect(_) => Some(4),
 			ScreenOverlay::None => None
 		};
 
@@ -96,6 +101,10 @@ impl GuiController {
 								ScreenOverlay::PatternSelect(PatternSelectScreen::new())
 						}
 						3 => {
+							self.screen_overlay =
+								ScreenOverlay::Routing(RoutingScreen::new())
+						}
+						4 => {
 							self.screen_overlay =
 								ScreenOverlay::ScaleSelect(ScaleSelectScreen::new())
 						}
@@ -134,6 +143,9 @@ impl GuiController {
 				ScreenOverlay::ScaleSelect(ref mut screen) => {
 					screen.handle_input(event, scale, scale_base_override, time);
 				}
+				ScreenOverlay::Routing(ref mut screen) => {
+					screen.handle_input(event, routing_matrix);
+				}
 			}
 		}
 	
@@ -159,6 +171,7 @@ impl GuiController {
 		scale: &heapless::Vec<Note, 16>,
 		scale_base_override: Option<Note>,
 		fader_values: &[Option<(f32, std::ops::RangeInclusive<f32>)>],
+		routing_matrix: &Vec<Vec<bool>>,
 		time: u64,
 		mut set_led: impl FnMut((u8, u8), LightingMode)
 	) {
@@ -185,7 +198,7 @@ impl GuiController {
 			}
 		);
 
-		right_buttons[3] =
+		right_buttons[4] =
 			if time < self.flash_scale_button_until {
 				if (time / (48000/10)) % 2 == 0 {
 					Some(Off)
@@ -226,8 +239,12 @@ impl GuiController {
 				right_buttons[2] = Some(MENU_SELECTED);
 				screen.draw(grid_and_top, active_pattern, active_arp)
 			}
-			ScreenOverlay::ScaleSelect(ref mut screen) => {
+			ScreenOverlay::Routing(ref mut screen) => {
 				right_buttons[3] = Some(MENU_SELECTED);
+				screen.draw(grid_and_top, routing_matrix);
+			}
+			ScreenOverlay::ScaleSelect(ref mut screen) => {
+				right_buttons[4] = Some(MENU_SELECTED);
 				screen.draw(grid_and_top, scale, scale_base_override);
 			}
 		}

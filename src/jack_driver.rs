@@ -38,6 +38,18 @@ pub struct JackDriver {
 	arp_contexts: Vec<ArpContext>
 }
 
+fn check_routing_matrix(matrix: &Vec<Vec<bool>>) -> bool {
+	assert!(matrix.iter().all(|arr| arr.len() == matrix.len()), "Routing matrix must be quadratic");
+
+	for i in 0..matrix.len() {
+		for j in 0..i {
+			assert!(matrix[i][j] == false);
+		}
+	}
+
+	true
+}
+
 impl JackDriver {
 	pub fn new(
 		name: &str,
@@ -110,6 +122,7 @@ impl JackDriver {
 		let time = self.time;
 		let arp_instance = &mut self.arp_contexts[self.active_arp].arp_instance;
 		let active_arp = &mut self.active_arp;
+		let routing_matrix = &mut self.routing_matrix;
 
 		for ev in self.ui_in_port.iter(scope) {
 			println!("event!");
@@ -139,6 +152,7 @@ impl JackDriver {
 						None,
 						Some((&mut arp_instance.arp.intensity_velocity_amount, 0.0..=2.0))
 					],
+					routing_matrix,
 					time
 				);
 			});
@@ -236,6 +250,7 @@ impl JackDriver {
 				None,
 				Some((arp_instance.arp.intensity_velocity_amount, 0.0..=2.0))
 			],
+			&self.routing_matrix,
 			self.time,
 			|pos, color| {
 				ui.set(pos, color, |bytes| {
@@ -313,6 +328,7 @@ impl JackDriver {
 			let time = self.time;
 			let out_channel = self.out_channel;
 			let routing_matrix = &self.routing_matrix;
+			assert!(check_routing_matrix(routing_matrix));
 			context.arp_instance.process_pending_events(
 				self.time + (scope.n_frames() as u64),
 				|events| {
