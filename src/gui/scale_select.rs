@@ -4,7 +4,8 @@ use crate::grid_controllers::{Color, GridButtonEvent, LightingMode};
 use crate::midi::Note;
 
 pub struct ScaleSelectScreen {
-	last_tap: (Note, u64)
+	last_tap: (Note, u64),
+	octave: Option<u8>
 }
 
 const MIDI_C0: u8 = 0;
@@ -48,7 +49,19 @@ fn coord_to_note(coord: (usize, usize)) -> Option<Note> {
 impl ScaleSelectScreen {
 	pub fn new() -> ScaleSelectScreen {
 		ScaleSelectScreen {
-			last_tap: (Note(0), 0)
+			last_tap: (Note(0), 0),
+			octave: None
+		}
+	}
+
+	fn init_octave(&mut self, scale_base_override: Option<Note>) {
+		if self.octave.is_none() {
+			if let Some(note) = scale_base_override {
+				self.octave = Some(note.0 / 12)
+			}
+			else {
+				self.octave = Some(5);
+			}
 		}
 	}
 
@@ -61,7 +74,17 @@ impl ScaleSelectScreen {
 	) {
 		use GridButtonEvent::*;
 
+		self.init_octave(*scale_base_override);
+
 		match event {
+			Down(x, 7, _) => {
+				if let Some(note) = *scale_base_override {
+					if x < 8 {
+						self.octave = Some(x + 2); // there are 10.6 octaves available, but we only support the middle eight of them
+						*scale_base_override = Some(Note(note.0 % 12).transpose(self.octave.unwrap() as i32 * 12).unwrap());
+					}
+				}
+			}
 			Down(x, y, _) => {
 				if let Some(note) = coord_to_note((x.into(), y.into())) {
 					let is_doubletap = note == self.last_tap.0 && time < self.last_tap.1 + 48000 / 4;
@@ -69,8 +92,10 @@ impl ScaleSelectScreen {
 					if let Some(index) = scale.iter().position(|n| *n == note) {
 						if !is_doubletap {
 							scale.swap_remove(index);
-							if *scale_base_override == Some(note) {
-								*scale_base_override = None;
+							if let Some(scale_base_override_note) = *scale_base_override {
+								if scale_base_override_note.0 % 12 == note.0 {
+									*scale_base_override = None;
+								}
 							}
 						}
 					}
@@ -80,7 +105,7 @@ impl ScaleSelectScreen {
 					scale.sort();
 
 					if is_doubletap {
-						*scale_base_override = Some(note);
+						*scale_base_override = Some(note.transpose(self.octave.unwrap() as i32 * 12).unwrap());
 					}
 
 					self.last_tap = (note, time);
@@ -98,16 +123,33 @@ impl ScaleSelectScreen {
 	) {
 		use LightingMode::*;
 
+		let bar_length = if let Some(scale_base_override) = scale_base_override {
+			(scale_base_override.0 / 12 - 1).clamp(0, 8) as usize
+		}
+		else {
+			0
+		};
+		
+		for i in 0..bar_length {
+			array[i][7] = Some(Solid(Color::Color(60, 0.7)));
+		}
+
 		for i in 0..12 {
 			let (x, y, black) = note_to_coord(Note(i));
 			let selected = scale.iter().find(|n| n.0 == i).is_some();
+			let is_scale_base_override = if let Some(scale_base_override) = scale_base_override {
+				scale_base_override.0 % 12 == i
+			}
+			else {
+				false
+			};
 			let base_color = if !black {
 				Color::White(1.0)
 			}
 			else {
 				Color::Color(240, 0.4)
 			};
-			let color = if scale_base_override == Some(Note(i)) {
+			let color = if is_scale_base_override {
 				Color::Color(60, 0.7)
 			}
 			else if selected {
