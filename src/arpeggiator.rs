@@ -283,7 +283,7 @@ impl Arpeggiator {
 }
 
 pub struct ArpeggiatorInstance {
-	ticks_per_step: u32,
+	pub ticks_per_step: u32,
 	tick_counter: u32,
 	pub patterns: [ArpeggioData; 8],
 	pub active_pattern: usize,

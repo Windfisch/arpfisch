@@ -10,6 +10,7 @@ mod pattern_select;
 mod scale_select;
 mod sliders;
 mod routing;
+mod clock_division;
 
 use config::ConfigScreen;
 use edit::EditScreen;
@@ -17,6 +18,7 @@ use pattern_select::PatternSelectScreen;
 use scale_select::ScaleSelectScreen;
 use sliders::SlidersScreen;
 use routing::RoutingScreen;
+use clock_division::ClockDivisionScreen;
 
 enum ScreenOverlay {
 	Sliders(SlidersScreen),
@@ -24,6 +26,7 @@ enum ScreenOverlay {
 	Routing(RoutingScreen),
 	Config(ConfigScreen),
 	ScaleSelect(ScaleSelectScreen),
+	ClockDivision(ClockDivisionScreen),
 	None
 }
 
@@ -55,6 +58,7 @@ impl GuiController {
 		use_external_clock: bool,
 		clock_mode: &mut ClockMode,
 		time_between_midiclocks: &mut u64,
+		ticks_per_step: &mut u32,
 		chord_hold: &mut bool,
 		chord_settle_time: &mut u64,
 		scale: &mut heapless::Vec<Note, 16>,
@@ -73,6 +77,7 @@ impl GuiController {
 			ScreenOverlay::PatternSelect(_) => Some(2),
 			ScreenOverlay::Routing(_) => Some(3),
 			ScreenOverlay::ScaleSelect(_) => Some(4),
+			ScreenOverlay::ClockDivision(_) => Some(5),
 			ScreenOverlay::None => None
 		};
 
@@ -107,6 +112,10 @@ impl GuiController {
 						4 => {
 							self.screen_overlay =
 								ScreenOverlay::ScaleSelect(ScaleSelectScreen::new())
+						}
+						5 => {
+							self.screen_overlay =
+								ScreenOverlay::ClockDivision(ClockDivisionScreen::new())
 						}
 						_ => ()
 					}
@@ -146,6 +155,9 @@ impl GuiController {
 				ScreenOverlay::Routing(ref mut screen) => {
 					screen.handle_input(event, routing_matrix);
 				}
+				ScreenOverlay::ClockDivision(ref mut screen) => {
+					screen.handle_input(event, ticks_per_step);
+				}
 			}
 		}
 	
@@ -167,6 +179,7 @@ impl GuiController {
 		use_external_clock: bool,
 		external_clock_present: bool,
 		clock_mode: ClockMode,
+		ticks_per_step: u32,
 		chord_hold: bool,
 		scale: &heapless::Vec<Note, 16>,
 		scale_base_override: Option<Note>,
@@ -246,6 +259,10 @@ impl GuiController {
 			ScreenOverlay::ScaleSelect(ref mut screen) => {
 				right_buttons[4] = Some(MENU_SELECTED);
 				screen.draw(grid_and_top, scale, scale_base_override);
+			}
+			ScreenOverlay::ClockDivision(ref mut screen) => {
+				right_buttons[5] = Some(MENU_SELECTED);
+				screen.draw(grid_and_top, ticks_per_step);
 			}
 		}
 
