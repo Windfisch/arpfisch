@@ -34,6 +34,7 @@ pub struct JackDriver {
 	clock_mode: ClockMode, // FIXME this should go to MasterController or something like that
 
 	routing_matrix: Vec<Vec<bool>>,
+	old_routing_matrix: Vec<Vec<bool>>,
 	active_arp: usize,
 	arp_contexts: Vec<ArpContext>
 }
@@ -82,7 +83,8 @@ impl JackDriver {
 			time_between_midiclocks: 24000 / 24,
 			clock_mode: ClockMode::Auto,
 			arp_contexts,
-			routing_matrix: vec![vec![false; n_arps]; n_arps]
+			routing_matrix: vec![vec![false; n_arps]; n_arps],
+			old_routing_matrix: vec![vec![false; n_arps]; n_arps]
 		};
 		Ok(driver)
 	}
@@ -330,7 +332,20 @@ impl JackDriver {
 			let time = self.time;
 			let out_channel = self.out_channel;
 			let routing_matrix = &self.routing_matrix;
+			let old_routing_matrix = &mut self.old_routing_matrix;
 			assert!(check_routing_matrix(routing_matrix));
+
+			// send note offs when a routing was just disabled
+			for j in (i+1) .. n_contexts {
+				if old_routing_matrix[i][j] && !routing_matrix[i][j] {
+					for note in context.arp_instance.pending_note_offs() {
+						let other_context = &mut context_tail[j - (i+1)];
+						other_context.arp_instance.arp.note_off(note, self.time);
+					}
+				}
+				old_routing_matrix[i][j] = routing_matrix[i][j];
+			}
+
 			context.arp_instance.process_pending_events(
 				self.time + (scope.n_frames() as u64),
 				|events| {

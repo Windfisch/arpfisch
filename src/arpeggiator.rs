@@ -335,6 +335,13 @@ impl ArpeggiatorInstance {
 		self.pending_events.push((timestamp, event)).map_err(|_| ())
 	}
 
+	pub fn pending_note_offs<'a>(&'a self) -> impl Iterator<Item = Note> + 'a {
+		self.pending_events.iter().filter_map(|tup| match tup.1 {
+			NoteEvent::NoteOff(note) => Some(note),
+			_ => None
+		})
+	}
+
 	/// Calls `callback` with all pending events that occur earlier than `time_limit`,
 	/// sorted by time stamp, and removes them from the pending event queue.
 	pub fn process_pending_events(
