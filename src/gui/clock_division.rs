@@ -49,22 +49,30 @@ impl ClockDivisionScreen {
 		&mut self,
 		array: &mut [[Option<LightingMode>; 9]; 8],
 		ticks_per_step: u32,
+		step: u32
 	) {
 		use LightingMode::*;
 		
 		let log2 = log2(ticks_per_step);
 		let uneven = ticks_per_step / 2u32.pow(log2);
 
+		let blinking = if step % 2 == 0 {
+			Solid(Color::White(1.0))
+		}
+		else {
+			Solid(Color::White(0.3))
+		};
+
 		for x in 0..8 {
 			array[x][UNEVEN_Y as usize] = if (2*x + 1) as u32 == uneven {
-				Some(Solid(Color::White(1.0)))
+				Some(blinking)
 			}
 			else {
 				Some(Solid(Color::Color(60, 0.7)))
 			};
 
 			array[x][POWER2_Y as usize] = if x as u32 == log2 {
-				Some(Solid(Color::White(1.0)))
+				Some(blinking)
 			}
 			else {
 				Some(Solid(Color::Color(180, 0.7)))

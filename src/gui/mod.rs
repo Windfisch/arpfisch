@@ -262,7 +262,7 @@ impl GuiController {
 			}
 			ScreenOverlay::ClockDivision(ref mut screen) => {
 				right_buttons[5] = Some(MENU_SELECTED);
-				screen.draw(grid_and_top, ticks_per_step);
+				screen.draw(grid_and_top, ticks_per_step, step as u32);
 			}
 		}
 
