@@ -45,16 +45,16 @@ impl PatternSelectScreen {
 
 		for y in 0..n_arps.min(8) {
 			let y = y as usize;
-
-			let color = if y == active_arp {
-				Color::White(1.0)
-			}
-			else {
-				Color::Color((360 * y as u16 * 3 / 8) % 360, 0.7)
-			};
-
+	
 			if active_pattern[y] < 8 {
-				array[active_pattern[y]][y] = Some(Solid(color));
+				array[active_pattern[y]][y] = Some(
+					if y == active_arp {
+						Fade(Color::White(1.0))
+					}
+					else {
+						Solid(Color::Color((360 * y as u16 * 3 / 8) % 360, 0.7))
+					}
+				)
 			}
 		}
 	}
