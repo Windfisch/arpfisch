@@ -5,13 +5,15 @@ use crate::grid_controllers::{Color, GridButtonEvent, LightingMode};
 use crate::tempo_detector::TempoDetector;
 
 pub struct ConfigScreen {
-	tempo: TempoDetector
+	tempo: TempoDetector,
+	restart_transport_hit_time: u64
 }
 
 impl ConfigScreen {
 	pub fn new() -> ConfigScreen {
 		ConfigScreen {
-			tempo: TempoDetector::new()
+			tempo: TempoDetector::new(),
+			restart_transport_hit_time: 0
 		}
 	}
 
@@ -20,6 +22,7 @@ impl ConfigScreen {
 		event: GridButtonEvent,
 		pattern: &mut ArpeggioData,
 		pane_height: &mut usize,
+		restart_transport_pending: &mut bool,
 		use_external_clock: bool,
 		clock_mode: &mut ClockMode,
 		time_between_midiclocks: &mut u64,
@@ -36,6 +39,10 @@ impl ConfigScreen {
 			}
 			Down(2, 2, _) => {
 				pattern.repeat_mode = RepeatMode::Repeat(12);
+			}
+			Down(6, 1, _) => {
+				*restart_transport_pending = true;
+				self.restart_transport_hit_time = time;
 			}
 			Down(7, 2, _) => {
 				if !use_external_clock {
@@ -77,7 +84,8 @@ impl ConfigScreen {
 		pane_height: usize,
 		use_external_clock: bool,
 		external_clock_present: bool,
-		clock_mode: ClockMode
+		clock_mode: ClockMode,
+		time: u64
 	) {
 		use LightingMode::*;
 
@@ -143,5 +151,15 @@ impl ConfigScreen {
 				}
 			}
 		}
+
+		// restart transport button
+		array[6][1] = Some(Solid(
+			if time < self.restart_transport_hit_time + 48000/2 {
+				Color::Color(0, 1.0)
+			}
+			else {
+				Color::Color(0, 0.7)
+			}
+		));
 	}
 }

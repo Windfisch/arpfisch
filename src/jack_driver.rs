@@ -33,6 +33,8 @@ pub struct JackDriver {
 	time_between_midiclocks: u64,
 	clock_mode: ClockMode, // FIXME this should go to MasterController or something like that
 
+	restart_transport_pending: bool,
+
 	routing_matrix: Vec<Vec<bool>>,
 	old_routing_matrix: Vec<Vec<bool>>,
 	active_arp: usize,
@@ -76,6 +78,7 @@ impl JackDriver {
 			active_arp: 0,
 
 			time: 0,
+			restart_transport_pending: false,
 			channel: 0,
 			out_channel: 0,
 			last_midiclock_received: 0,
@@ -125,6 +128,7 @@ impl JackDriver {
 		let arp_instance = &mut self.arp_contexts[self.active_arp].arp_instance;
 		let active_arp = &mut self.active_arp;
 		let routing_matrix = &mut self.routing_matrix;
+		let restart_transport_pending = &mut self.restart_transport_pending;
 
 		for ev in self.ui_in_port.iter(scope) {
 			println!("event!");
@@ -135,6 +139,7 @@ impl JackDriver {
 					8, // FIXME
 					&mut active_patterns,
 					active_arp,
+					restart_transport_pending,
 					use_external_clock,
 					clock_mode,
 					time_between_midiclocks,
@@ -172,6 +177,11 @@ impl JackDriver {
 		scope: &ProcessScope
 	) -> TransportEventVec {
 		let mut transport_events = TransportEventVec::new();
+
+		if self.restart_transport_pending {
+			transport_events.push((self.time, NoteEvent::Start)).ok();
+			self.restart_transport_pending = false;
+		}
 
 		for event in self.arp_contexts[0].in_port.iter(scope) {
 				let timestamp = self.time + event.time as u64;

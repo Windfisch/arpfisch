@@ -55,6 +55,7 @@ impl GuiController {
 		n_patterns: usize,
 		active_pattern: &mut [usize],
 		active_arp: &mut usize,
+		restart_transport_pending: &mut bool,
 		use_external_clock: bool,
 		clock_mode: &mut ClockMode,
 		time_between_midiclocks: &mut u64,
@@ -137,6 +138,7 @@ impl GuiController {
 						event,
 						pattern,
 						&mut self.edit_screen.pane_height,
+						restart_transport_pending,
 						use_external_clock,
 						clock_mode,
 						time_between_midiclocks,
@@ -156,7 +158,7 @@ impl GuiController {
 					screen.handle_input(event, routing_matrix);
 				}
 				ScreenOverlay::ClockDivision(ref mut screen) => {
-					screen.handle_input(event, ticks_per_step);
+					screen.handle_input(event, ticks_per_step, restart_transport_pending, time);
 				}
 			}
 		}
@@ -241,7 +243,8 @@ impl GuiController {
 					self.edit_screen.pane_height,
 					use_external_clock,
 					external_clock_present,
-					clock_mode
+					clock_mode,
+					time
 				);
 			}
 			ScreenOverlay::Sliders(ref mut screen) => {
@@ -262,7 +265,7 @@ impl GuiController {
 			}
 			ScreenOverlay::ClockDivision(ref mut screen) => {
 				right_buttons[5] = Some(MENU_SELECTED);
-				screen.draw(grid_and_top, ticks_per_step, step as u32);
+				screen.draw(grid_and_top, ticks_per_step, step as u32, time);
 			}
 		}
 
