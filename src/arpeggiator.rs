@@ -76,7 +76,8 @@ impl Entry {
 			(self.len_steps as f32 - 0.5) * modifier
 		}
 		else {
-			self.len_steps as f32 - 1.0 + modifier / 2.0
+			// clamp the modifier to not-quite-1.0, in order to avoid racy NoteOff and NoteOn events
+			self.len_steps as f32 - 1.0 + (modifier / 2.0).clamp(0.0, 0.9999)
 		}
 	}
 }
