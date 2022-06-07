@@ -1,6 +1,6 @@
 // this file is part of arpfisch. For copyright and licensing details, see main.rs
 
-use crate::midi::{Note, NoteEvent};
+use crate::midi::{Note, NoteEvent, Channel};
 use crate::tempo_detector::TempoDetector;
 use heapless;
 
@@ -137,7 +137,7 @@ pub struct Arpeggiator {
 	step: usize,
 	pub scale: heapless::Vec<Note, 16>,
 	pub scale_base_override: Option<Note>,
-	scale_base_override_old: Option<Note> // meeeeh FIXME
+	scale_base_override_old: Option<Note>, // meeeeh FIXME
 }
 
 #[derive(Copy, Clone)]
@@ -272,8 +272,8 @@ impl Arpeggiator {
 				.map(|n| n.transpose(entry.transpose))
 				.flatten()
 			{
-				callback(note_length, NoteEvent::NoteOff(note))?;
-				callback(0.0, NoteEvent::NoteOn(note, (127.0 * velocity) as u8))?;
+				callback(note_length, NoteEvent::NoteOff(note, Channel(0)))?;
+				callback(0.0, NoteEvent::NoteOn(note, (127.0 * velocity) as u8, Channel(0)))?;
 			}
 		}
 		Ok(())
@@ -338,7 +338,7 @@ impl ArpeggiatorInstance {
 
 	pub fn pending_note_offs<'a>(&'a self) -> impl Iterator<Item = Note> + 'a {
 		self.pending_events.iter().filter_map(|tup| match tup.1 {
-			NoteEvent::NoteOff(note) => Some(note),
+			NoteEvent::NoteOff(note, _) => Some(note),
 			_ => None
 		})
 	}

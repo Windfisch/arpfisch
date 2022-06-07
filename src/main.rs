@@ -33,8 +33,6 @@ fn main() {
 
 	let mut jack_driver = JackDriver::new("fnord", 4, &client).unwrap();
 
-	//let (mut producer, mut consumer) = ringbuf::RingBuffer::<Message>::new(10).split();
-
 	let _async_client = client
 		.activate_async(
 			(),
