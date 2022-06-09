@@ -42,6 +42,7 @@ pub trait DriverFrame {
 	fn read_events(&self, port_number: usize) -> Self::EventIterator;
 	fn send_ui_event(&mut self, time: u32, event: &[u8]) -> Result<(), ()>;
 	fn read_ui_events(&self) -> Self::RawMidiIterator;
+	fn ui_just_connected(&self) -> bool;
 	fn len(&self) -> u32;
 }
 
@@ -130,7 +131,8 @@ impl JackDriver {
 			arp_inputs: &'a [Port<MidiIn>],
 			ui_writer: jack::MidiWriter<'a>,
 			ui_input: &'a Port<MidiIn>,
-			scope: &'a ProcessScope
+			scope: &'a ProcessScope,
+			ui_just_connected: bool
 		}
 
 		struct MyRawMidiIterator<'a>(jack::MidiIter<'a>);
@@ -168,6 +170,10 @@ impl JackDriver {
 			type RawMidiIterator = MyRawMidiIterator<'a>;
 			type EventIterator = MyEventIterator<'a>;
 
+			fn ui_just_connected(&self) -> bool {
+				self.ui_just_connected
+			}
+
 			fn read_ui_events(&self) -> Self::RawMidiIterator {
 				MyRawMidiIterator(self.ui_input.iter(self.scope))
 			}
@@ -200,7 +206,8 @@ impl JackDriver {
 			arp_inputs: &self.arp_in_ports,
 			ui_writer: self.ui_out_port.writer(&scope),
 			ui_input: &self.ui_in_port,
-			scope
+			scope,
+			ui_just_connected: self.periods == 10
 		};
 
 		self.midi_driver.process(&mut frame);
@@ -208,14 +215,6 @@ impl JackDriver {
 
 		if self.periods == 0 {
 			self.autoconnect(client);
-		}
-		if self.periods == 10 {
-			let mut writer = self.ui_out_port.writer(scope);
-			/*self.ui.init(|bytes| { FIXME FIXME FIXME
-				writer
-					.write(&jack::RawMidi { time: 0, bytes })
-					.expect("Writing to UI MIDI buffer failed");
-			});*/
 		}
 		self.periods += 1;
 	}
@@ -358,7 +357,7 @@ impl MidiDriver {
 		for (timestamp, event) in transport_events.iter() {
 			match event {
 				NoteEvent::Clock => {
-					frame.send_ui_event((timestamp - self.time) as u32, &[0xF8]);
+					frame.send_ui_event((timestamp - self.time) as u32, &[0xF8]).ok();
 				}
 				_ => ()
 			}
@@ -404,6 +403,13 @@ impl MidiDriver {
 	}
 
 	pub fn process(&mut self, frame: &mut impl DriverFrame) {
+		if frame.ui_just_connected() {
+			self.ui.init(|bytes| {
+				frame.send_ui_event(0, bytes)
+					.expect("Writing to UI MIDI buffer failed");
+			});
+		}
+
 		let external_clock_present = self.time - self.last_midiclock_received <= 48000;
 		let use_external_clock = match self.clock_mode {
 			ClockMode::Internal => false,
