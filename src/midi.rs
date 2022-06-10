@@ -19,11 +19,12 @@ impl Note {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum NoteEvent { // FIXME misnomer
+pub enum NoteEvent {
+	// FIXME misnomer
 	NoteOn(Note, u8, Channel),
 	NoteOff(Note, Channel),
 	Clock,
-	Start,
+	Start
 }
 
 impl NoteEvent {
@@ -33,11 +34,9 @@ impl NoteEvent {
 			NoteOn(note, velo, channel) => {
 				heapless::Vec::from_slice(&[0x90 | channel.0, note.0, *velo])
 			}
-			NoteOff(note, channel) => {
-				heapless::Vec::from_slice(&[0x80 | channel.0, note.0, 64])
-			}
+			NoteOff(note, channel) => heapless::Vec::from_slice(&[0x80 | channel.0, note.0, 64]),
 			Clock => heapless::Vec::from_slice(&[0xF8]),
-			Start => heapless::Vec::from_slice(&[0xFA]),
+			Start => heapless::Vec::from_slice(&[0xFA])
 		}
 		.unwrap()
 	}

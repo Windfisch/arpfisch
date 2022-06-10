@@ -5,15 +5,9 @@ use crate::grid_controllers::{Color, GridButtonEvent, LightingMode};
 pub struct RoutingScreen {}
 
 impl RoutingScreen {
-	pub fn new() -> RoutingScreen {
-		RoutingScreen {}
-	}
+	pub fn new() -> RoutingScreen { RoutingScreen {} }
 
-	pub fn handle_input(
-		&mut self,
-		event: GridButtonEvent,
-		routing_matrix: &mut Vec<Vec<bool>>
-	) {
+	pub fn handle_input(&mut self, event: GridButtonEvent, routing_matrix: &mut Vec<Vec<bool>>) {
 		use GridButtonEvent::*;
 
 		assert!(routing_matrix.len() == routing_matrix[0].len());
@@ -22,7 +16,8 @@ impl RoutingScreen {
 		match event {
 			Down(x, y, _) => {
 				if x < y && (y as usize) < len {
-					routing_matrix[x as usize][y as usize] = !routing_matrix[x as usize][y as usize];
+					routing_matrix[x as usize][y as usize] =
+						!routing_matrix[x as usize][y as usize];
 				}
 			}
 			_ => ()

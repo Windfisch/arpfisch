@@ -7,7 +7,7 @@ use heapless;
 use jack::*;
 
 use crate::gui::GuiController; // FIXME this should not be in the jack driver
-use crate::midi::{NoteEvent, Channel};
+use crate::midi::{Channel, NoteEvent};
 
 type TransportEventVec = heapless::Vec<(u64, NoteEvent), 16>;
 
@@ -24,7 +24,8 @@ pub struct JackDriver {
 
 pub type RawMidiEvent = heapless::Vec<u8, 3>;
 
-pub struct TimestampedNoteEvent { // FIXME misnomer
+pub struct TimestampedNoteEvent {
+	// FIXME misnomer
 	time: u32,
 	event: NoteEvent
 }
@@ -67,7 +68,10 @@ pub struct MidiDriver {
 }
 
 fn check_routing_matrix(matrix: &Vec<Vec<bool>>) -> bool {
-	assert!(matrix.iter().all(|arr| arr.len() == matrix.len()), "Routing matrix must be quadratic");
+	assert!(
+		matrix.iter().all(|arr| arr.len() == matrix.len()),
+		"Routing matrix must be quadratic"
+	);
 
 	for i in 0..matrix.len() {
 		for j in 0..i {
@@ -123,9 +127,8 @@ impl JackDriver {
 				.expect("Failed to connect");
 		}
 	}
-	
-	pub fn process(&mut self, client: &jack::Client, scope: &ProcessScope) {
 
+	pub fn process(&mut self, client: &jack::Client, scope: &ProcessScope) {
 		struct MyDriverFrame<'a> {
 			arp_writers: Vec<jack::MidiWriter<'a>>,
 			arp_inputs: &'a [Port<MidiIn>],
@@ -141,14 +144,12 @@ impl JackDriver {
 			type Item = TimeStampedRawMidiEvent;
 			fn next(&mut self) -> Option<Self::Item> {
 				use std::convert::TryInto;
-				self.0.find_map(|ev| 
-					ev.bytes.try_into().ok().map(|vec|
-						TimeStampedRawMidiEvent {
-							time: ev.time,
-							event: vec
-						}
-					)
-				)
+				self.0.find_map(|ev| {
+					ev.bytes.try_into().ok().map(|vec| TimeStampedRawMidiEvent {
+						time: ev.time,
+						event: vec
+					})
+				})
 			}
 		}
 
@@ -170,39 +171,45 @@ impl JackDriver {
 			type RawMidiIterator = MyRawMidiIterator<'a>;
 			type EventIterator = MyEventIterator<'a>;
 
-			fn ui_just_connected(&self) -> bool {
-				self.ui_just_connected
-			}
+			fn ui_just_connected(&self) -> bool { self.ui_just_connected }
 
 			fn read_ui_events(&self) -> Self::RawMidiIterator {
 				MyRawMidiIterator(self.ui_input.iter(self.scope))
 			}
 
 			fn send_ui_event(&mut self, time: u32, bytes: &[u8]) -> Result<(), ()> {
-				self.ui_writer.write(&jack::RawMidi {
-					time,
-					bytes
-				}).map_err(|_| ())
+				self.ui_writer
+					.write(&jack::RawMidi { time, bytes })
+					.map_err(|_| ())
 			}
 
 			fn read_events(&self, port_number: usize) -> Self::EventIterator {
 				MyEventIterator(self.arp_inputs[port_number].iter(self.scope))
 			}
 
-			fn send_event(&mut self, port_number: usize, time: u32, event: NoteEvent) -> Result<(), ()> {
-				self.arp_writers[port_number].write(&jack::RawMidi {
-					time,
-					bytes: &event.to_bytes()
-				}).map_err(|_| ())
+			fn send_event(
+				&mut self,
+				port_number: usize,
+				time: u32,
+				event: NoteEvent
+			) -> Result<(), ()> {
+				self.arp_writers[port_number]
+					.write(&jack::RawMidi {
+						time,
+						bytes: &event.to_bytes()
+					})
+					.map_err(|_| ())
 			}
 
-			fn len(&self) -> u32 {
-				self.scope.n_frames()
-			}
+			fn len(&self) -> u32 { self.scope.n_frames() }
 		}
 
 		let mut frame = MyDriverFrame {
-			arp_writers: self.arp_out_ports.iter_mut().map(|p| p.writer(&scope)).collect(),
+			arp_writers: self
+				.arp_out_ports
+				.iter_mut()
+				.map(|p| p.writer(&scope))
+				.collect(),
 			arp_inputs: &self.arp_in_ports,
 			ui_writer: self.ui_out_port.writer(&scope),
 			ui_input: &self.ui_in_port,
@@ -211,7 +218,6 @@ impl JackDriver {
 		};
 
 		self.midi_driver.process(&mut frame);
-
 
 		if self.periods == 0 {
 			self.autoconnect(client);
@@ -227,7 +233,7 @@ impl MidiDriver {
 			arp_instances.push(ArpeggiatorInstance::new());
 		}
 
-		MidiDriver{
+		MidiDriver {
 			active_arp: 0,
 			time: 0,
 			restart_transport_pending: false,
@@ -241,7 +247,7 @@ impl MidiDriver {
 			routing_matrix: vec![vec![false; n_arps]; n_arps],
 			old_routing_matrix: vec![vec![false; n_arps]; n_arps],
 			ui: LaunchpadX::new(),
-			gui_controller: GuiController::new(),
+			gui_controller: GuiController::new()
 		}
 	}
 
@@ -298,7 +304,8 @@ impl MidiDriver {
 			});
 		}
 
-		for (active_pattern, instance) in active_patterns.iter().zip(self.arp_instances.iter_mut()) {
+		for (active_pattern, instance) in active_patterns.iter().zip(self.arp_instances.iter_mut())
+		{
 			instance.active_pattern = *active_pattern;
 		}
 	}
@@ -357,7 +364,9 @@ impl MidiDriver {
 		for (timestamp, event) in transport_events.iter() {
 			match event {
 				NoteEvent::Clock => {
-					frame.send_ui_event((timestamp - self.time) as u32, &[0xF8]).ok();
+					frame
+						.send_ui_event((timestamp - self.time) as u32, &[0xF8])
+						.ok();
 				}
 				_ => ()
 			}
@@ -405,7 +414,8 @@ impl MidiDriver {
 	pub fn process(&mut self, frame: &mut impl DriverFrame) {
 		if frame.ui_just_connected() {
 			self.ui.init(|bytes| {
-				frame.send_ui_event(0, bytes)
+				frame
+					.send_ui_event(0, bytes)
 					.expect("Writing to UI MIDI buffer failed");
 			});
 		}
@@ -437,14 +447,16 @@ impl MidiDriver {
 				let timestamp = self.time + event.time as u64;
 
 				match event.event {
-					NoteEvent::NoteOn(note, _velocity, channel) =>
+					NoteEvent::NoteOn(note, _velocity, channel) => {
 						if channel == self.in_channel {
 							instance.arp.note_on(note, timestamp)
-						},
-					NoteEvent::NoteOff(note, channel) =>
+						}
+					}
+					NoteEvent::NoteOff(note, channel) => {
 						if channel == self.in_channel {
 							instance.arp.note_off(note, timestamp)
-						},
+						}
+					}
 					_ => ()
 				}
 			}
@@ -464,7 +476,7 @@ impl MidiDriver {
 					_ => ()
 				}
 			}
-			
+
 			// output
 			let time = self.time;
 			let out_channel = self.out_channel;
@@ -473,40 +485,42 @@ impl MidiDriver {
 			assert!(check_routing_matrix(routing_matrix));
 
 			// send note offs when a routing was just disabled
-			for j in (i+1) .. n_instances {
+			for j in (i + 1)..n_instances {
 				if old_routing_matrix[i][j] && !routing_matrix[i][j] {
 					for note in instance.pending_note_offs() {
-						let other_context = &mut instance_tail[j - (i+1)];
+						let other_context = &mut instance_tail[j - (i + 1)];
 						other_context.arp.note_off(note, self.time);
 					}
 				}
 				old_routing_matrix[i][j] = routing_matrix[i][j];
 			}
 
-			instance.process_pending_events(
-				self.time + (frame.len() as u64),
-				|events| {
-					for event in events {
-						for j in (i+1) .. n_instances {
-							let other_context = &mut instance_tail[j - (i+1)];
-							if routing_matrix[i][j] {
-								match event.1 {
-									NoteEvent::NoteOn(note, _, _) => {
-										other_context.arp.note_on(note, event.0);
-									}
-									NoteEvent::NoteOff(note, _) => {
-										other_context.arp.note_off(note, event.0);
-									}
-									_ => ()
+			instance.process_pending_events(self.time + (frame.len() as u64), |events| {
+				for event in events {
+					for j in (i + 1)..n_instances {
+						let other_context = &mut instance_tail[j - (i + 1)];
+						if routing_matrix[i][j] {
+							match event.1 {
+								NoteEvent::NoteOn(note, _, _) => {
+									other_context.arp.note_on(note, event.0);
 								}
+								NoteEvent::NoteOff(note, _) => {
+									other_context.arp.note_off(note, event.0);
+								}
+								_ => ()
 							}
 						}
-
-						frame.send_event(i, (event.0 - time) as u32, event.1.with_channel(out_channel))
-							.expect("Writing to MIDI buffer failed");
 					}
+
+					frame
+						.send_event(
+							i,
+							(event.0 - time) as u32,
+							event.1.with_channel(out_channel)
+						)
+						.expect("Writing to MIDI buffer failed");
 				}
-			);
+			});
 		}
 
 		self.time += frame.len() as u64;

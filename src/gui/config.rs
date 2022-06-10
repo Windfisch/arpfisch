@@ -154,7 +154,7 @@ impl ConfigScreen {
 
 		// restart transport button
 		array[6][1] = Some(Solid(
-			if time < self.restart_transport_hit_time + 48000/2 {
+			if time < self.restart_transport_hit_time + 48000 / 2 {
 				Color::Color(0, 1.0)
 			}
 			else {

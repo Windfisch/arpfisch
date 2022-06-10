@@ -81,13 +81,18 @@ impl ScaleSelectScreen {
 				if let Some(note) = *scale_base_override {
 					if x < 8 {
 						self.octave = Some(x + 2); // there are 10.6 octaves available, but we only support the middle eight of them
-						*scale_base_override = Some(Note(note.0 % 12).transpose(self.octave.unwrap() as i32 * 12).unwrap());
+						*scale_base_override = Some(
+							Note(note.0 % 12)
+								.transpose(self.octave.unwrap() as i32 * 12)
+								.unwrap()
+						);
 					}
 				}
 			}
 			Down(x, y, _) => {
 				if let Some(note) = coord_to_note((x.into(), y.into())) {
-					let is_doubletap = note == self.last_tap.0 && time < self.last_tap.1 + 48000 / 4;
+					let is_doubletap =
+						note == self.last_tap.0 && time < self.last_tap.1 + 48000 / 4;
 
 					if let Some(index) = scale.iter().position(|n| *n == note) {
 						if !is_doubletap {
@@ -105,7 +110,8 @@ impl ScaleSelectScreen {
 					scale.sort();
 
 					if is_doubletap {
-						*scale_base_override = Some(note.transpose(self.octave.unwrap() as i32 * 12).unwrap());
+						*scale_base_override =
+							Some(note.transpose(self.octave.unwrap() as i32 * 12).unwrap());
 					}
 
 					self.last_tap = (note, time);
@@ -129,7 +135,7 @@ impl ScaleSelectScreen {
 		else {
 			0
 		};
-		
+
 		for i in 0..bar_length {
 			array[i][7] = Some(Solid(Color::Color(60, 0.7)));
 		}

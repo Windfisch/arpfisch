@@ -4,21 +4,21 @@ use crate::arpeggiator::*;
 use crate::grid_controllers::*;
 use crate::midi::Note;
 
+mod clock_division;
 mod config;
 mod edit;
 mod pattern_select;
+mod routing;
 mod scale_select;
 mod sliders;
-mod routing;
-mod clock_division;
 
+use clock_division::ClockDivisionScreen;
 use config::ConfigScreen;
 use edit::EditScreen;
 use pattern_select::PatternSelectScreen;
+use routing::RoutingScreen;
 use scale_select::ScaleSelectScreen;
 use sliders::SlidersScreen;
-use routing::RoutingScreen;
-use clock_division::ClockDivisionScreen;
 
 enum ScreenOverlay {
 	Sliders(SlidersScreen),
@@ -106,10 +106,7 @@ impl GuiController {
 							self.screen_overlay =
 								ScreenOverlay::PatternSelect(PatternSelectScreen::new())
 						}
-						3 => {
-							self.screen_overlay =
-								ScreenOverlay::Routing(RoutingScreen::new())
-						}
+						3 => self.screen_overlay = ScreenOverlay::Routing(RoutingScreen::new()),
 						4 => {
 							self.screen_overlay =
 								ScreenOverlay::ScaleSelect(ScaleSelectScreen::new())
@@ -162,7 +159,7 @@ impl GuiController {
 				}
 			}
 		}
-	
+
 		if !scale.is_empty() && pattern.repeat_mode != RepeatMode::Repeat(12) {
 			pattern.repeat_mode = RepeatMode::Repeat(12);
 			match self.screen_overlay {
@@ -199,37 +196,34 @@ impl GuiController {
 		let (right_buttons, grid_and_top) = (&mut array).split_last_mut().unwrap();
 		let grid_and_top = grid_and_top.try_into().unwrap();
 
-		right_buttons[7] = Some(
-			if scale_base_override.is_none() {
-				if chord_hold {
-					Solid(Color::Color(215, 0.7))
-				}
-				else {
-					Solid(Color::Color(300, 0.1))
-				}
+		right_buttons[7] = Some(if scale_base_override.is_none() {
+			if chord_hold {
+				Solid(Color::Color(215, 0.7))
 			}
 			else {
-				Solid(Color::Color(60, 0.7))
+				Solid(Color::Color(300, 0.1))
 			}
-		);
+		}
+		else {
+			Solid(Color::Color(60, 0.7))
+		});
 
-		right_buttons[4] =
-			if time < self.flash_scale_button_until {
-				if (time / (48000/10)) % 2 == 0 {
-					Some(Off)
-				}
-				else {
-					Some(Solid(Color::Color(215, 0.7)))
-				}
+		right_buttons[4] = if time < self.flash_scale_button_until {
+			if (time / (48000 / 10)) % 2 == 0 {
+				Some(Off)
 			}
 			else {
-				if scale.is_empty() {
-					None
-				}
-				else {
-					Some(Solid(Color::Color(215, 0.7)))
-				}
-			};
+				Some(Solid(Color::Color(215, 0.7)))
+			}
+		}
+		else {
+			if scale.is_empty() {
+				None
+			}
+			else {
+				Some(Solid(Color::Color(215, 0.7)))
+			}
+		};
 
 		match self.screen_overlay {
 			ScreenOverlay::None => {

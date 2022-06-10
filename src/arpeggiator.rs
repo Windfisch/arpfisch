@@ -1,6 +1,6 @@
 // this file is part of arpfisch. For copyright and licensing details, see main.rs
 
-use crate::midi::{Note, NoteEvent, Channel};
+use crate::midi::{Channel, Note, NoteEvent};
 use crate::tempo_detector::TempoDetector;
 use heapless;
 
@@ -137,7 +137,7 @@ pub struct Arpeggiator {
 	step: usize,
 	pub scale: heapless::Vec<Note, 16>,
 	pub scale_base_override: Option<Note>,
-	scale_base_override_old: Option<Note>, // meeeeh FIXME
+	scale_base_override_old: Option<Note> // meeeeh FIXME
 }
 
 #[derive(Copy, Clone)]
@@ -147,10 +147,7 @@ pub enum ClockMode {
 	Auto
 }
 
-fn scale_from<const LEN: usize>(
-	scale: &[Note],
-	bottom: Note
-) -> heapless::Vec<Note, LEN> {
+fn scale_from<const LEN: usize>(scale: &[Note], bottom: Note) -> heapless::Vec<Note, LEN> {
 	match scale
 		.iter()
 		.position(|note| (note.0 as isize - bottom.0 as isize) % 12 == 0)
@@ -188,7 +185,7 @@ impl Arpeggiator {
 			chord_hold_old: false,
 			scale: heapless::Vec::new(),
 			scale_base_override: None,
-			scale_base_override_old: None,
+			scale_base_override_old: None
 		}
 	}
 
@@ -273,7 +270,10 @@ impl Arpeggiator {
 				.flatten()
 			{
 				callback(note_length, NoteEvent::NoteOff(note, Channel(0)))?;
-				callback(0.0, NoteEvent::NoteOn(note, (127.0 * velocity) as u8, Channel(0)))?;
+				callback(
+					0.0,
+					NoteEvent::NoteOn(note, (127.0 * velocity) as u8, Channel(0))
+				)?;
 			}
 		}
 		Ok(())

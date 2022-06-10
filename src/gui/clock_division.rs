@@ -6,7 +6,8 @@ pub struct ClockDivisionScreen {
 	restart_transport_hit_time: u64
 }
 
-fn log2(value: u32) -> u32 { // FIXME use u32::log2 once it's stable
+fn log2(value: u32) -> u32 {
+	// FIXME use u32::log2 once it's stable
 	assert!(value != 0);
 	for exponent in 0..32 {
 		if value % 2u32.pow(exponent + 1) != 0 {
@@ -44,7 +45,7 @@ impl ClockDivisionScreen {
 				self.restart_transport_hit_time = time;
 			}
 			Down(x, UNEVEN_Y, _) => {
-				let new_uneven = (2*x + 1) as u32;
+				let new_uneven = (2 * x + 1) as u32;
 				*ticks_per_step = new_uneven * 2u32.pow(log2);
 			}
 			Down(x, POWER2_Y, _) => {
@@ -62,7 +63,7 @@ impl ClockDivisionScreen {
 		time: u64
 	) {
 		use LightingMode::*;
-		
+
 		let log2 = log2(ticks_per_step);
 		let uneven = ticks_per_step / 2u32.pow(log2);
 
@@ -74,7 +75,7 @@ impl ClockDivisionScreen {
 		};
 
 		for x in 0..8 {
-			array[x][UNEVEN_Y as usize] = if (2*x + 1) as u32 == uneven {
+			array[x][UNEVEN_Y as usize] = if (2 * x + 1) as u32 == uneven {
 				Some(blinking)
 			}
 			else {
@@ -88,10 +89,10 @@ impl ClockDivisionScreen {
 				Some(Solid(Color::Color(180, 0.7)))
 			};
 		}
-		
+
 		// restart transport button
 		array[6][1] = Some(Solid(
-			if time < self.restart_transport_hit_time + 48000/2 {
+			if time < self.restart_transport_hit_time + 48000 / 2 {
 				Color::Color(0, 1.0)
 			}
 			else {
