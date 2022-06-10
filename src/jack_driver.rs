@@ -19,7 +19,7 @@ pub struct JackDriver {
 	arp_in_ports: Vec<Port<MidiIn>>,
 	arp_out_ports: Vec<Port<MidiOut>>,
 
-	midi_driver: MidiDriver
+	midi_driver: ArpApplication
 }
 
 pub type RawMidiEvent = heapless::Vec<u8, 3>;
@@ -46,7 +46,7 @@ pub trait DriverFrame {
 	fn len(&self) -> u32;
 }
 
-pub struct MidiDriver {
+pub struct ArpApplication {
 	ui: LaunchpadX,
 	gui_controller: GuiController,
 
@@ -100,7 +100,7 @@ impl JackDriver {
 			arp_in_ports,
 			arp_out_ports,
 			periods: 0,
-			midi_driver: MidiDriver::new(n_arps)
+			midi_driver: ArpApplication::new(n_arps)
 		};
 
 		Ok(driver)
@@ -225,14 +225,14 @@ impl JackDriver {
 	}
 }
 
-impl MidiDriver {
-	pub fn new(n_arps: usize) -> MidiDriver {
+impl ArpApplication {
+	pub fn new(n_arps: usize) -> ArpApplication {
 		let mut arp_instances = Vec::new();
 		for _ in 0..n_arps {
 			arp_instances.push(ArpeggiatorInstance::new());
 		}
 
-		MidiDriver {
+		ArpApplication {
 			active_arp: 0,
 			time: 0,
 			restart_transport_pending: false,
