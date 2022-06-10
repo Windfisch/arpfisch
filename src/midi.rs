@@ -19,17 +19,16 @@ impl Note {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum NoteEvent {
-	// FIXME misnomer
+pub enum MidiEvent {
 	NoteOn(Note, u8, Channel),
 	NoteOff(Note, Channel),
 	Clock,
 	Start
 }
 
-impl NoteEvent {
+impl MidiEvent {
 	pub fn to_bytes(&self) -> heapless::Vec<u8, 3> {
-		use NoteEvent::*;
+		use MidiEvent::*;
 		match self {
 			NoteOn(note, velo, channel) => {
 				heapless::Vec::from_slice(&[0x90 | channel.0, note.0, *velo])
@@ -41,8 +40,8 @@ impl NoteEvent {
 		.unwrap()
 	}
 
-	pub fn parse(bytes: &[u8]) -> Option<NoteEvent> {
-		use NoteEvent::*;
+	pub fn parse(bytes: &[u8]) -> Option<MidiEvent> {
+		use MidiEvent::*;
 		if bytes[0] & 0xF0 == 0x90 {
 			Some(NoteOn(Note(bytes[1]), bytes[2], Channel(bytes[0] & 0x0F)))
 		}
@@ -60,8 +59,8 @@ impl NoteEvent {
 		}
 	}
 
-	pub fn with_channel(self, channel: Channel) -> NoteEvent {
-		use NoteEvent::*;
+	pub fn with_channel(self, channel: Channel) -> MidiEvent {
+		use MidiEvent::*;
 		match self {
 			NoteOn(note, velo, _) => NoteOn(note, velo, channel),
 			NoteOff(note, _) => NoteOff(note, channel),

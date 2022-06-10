@@ -1,6 +1,6 @@
 // this file is part of arpfisch. For copyright and licensing details, see main.rs
 
-use crate::midi::{Channel, Note, NoteEvent};
+use crate::midi::{Channel, Note, MidiEvent};
 use crate::tempo_detector::TempoDetector;
 use heapless;
 
@@ -224,7 +224,7 @@ impl Arpeggiator {
 			}
 		}
 	}
-	pub fn process_step<F: FnMut(f32, NoteEvent) -> Result<(), ()>>(
+	pub fn process_step<F: FnMut(f32, MidiEvent) -> Result<(), ()>>(
 		&mut self,
 		pattern: &ArpeggioData,
 		time: u64,
@@ -269,10 +269,10 @@ impl Arpeggiator {
 				.map(|n| n.transpose(entry.transpose))
 				.flatten()
 			{
-				callback(note_length, NoteEvent::NoteOff(note, Channel(0)))?;
+				callback(note_length, MidiEvent::NoteOff(note, Channel(0)))?;
 				callback(
 					0.0,
-					NoteEvent::NoteOn(note, (127.0 * velocity) as u8, Channel(0))
+					MidiEvent::NoteOn(note, (127.0 * velocity) as u8, Channel(0))
 				)?;
 			}
 		}
@@ -290,7 +290,7 @@ pub struct ArpeggiatorInstance {
 	pub active_pattern: usize,
 	pub arp: Arpeggiator,
 	tempo: TempoDetector,
-	pending_events: heapless::Vec<(u64, NoteEvent), 32>
+	pending_events: heapless::Vec<(u64, MidiEvent), 32>
 }
 
 impl ArpeggiatorInstance {
@@ -332,13 +332,13 @@ impl ArpeggiatorInstance {
 			.rem_euclid(self.active_pattern().pattern.len() as f32)
 	}
 
-	pub fn add_pending_event(&mut self, timestamp: u64, event: NoteEvent) -> Result<(), ()> {
+	pub fn add_pending_event(&mut self, timestamp: u64, event: MidiEvent) -> Result<(), ()> {
 		self.pending_events.push((timestamp, event)).map_err(|_| ())
 	}
 
 	pub fn pending_note_offs<'a>(&'a self) -> impl Iterator<Item = Note> + 'a {
 		self.pending_events.iter().filter_map(|tup| match tup.1 {
-			NoteEvent::NoteOff(note, _) => Some(note),
+			MidiEvent::NoteOff(note, _) => Some(note),
 			_ => None
 		})
 	}
@@ -348,7 +348,7 @@ impl ArpeggiatorInstance {
 	pub fn process_pending_events(
 		&mut self,
 		time_limit: u64,
-		mut callback: impl FnMut(&[(u64, NoteEvent)])
+		mut callback: impl FnMut(&[(u64, MidiEvent)])
 	) {
 		self.pending_events.sort();
 		let end = self

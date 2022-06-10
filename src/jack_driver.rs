@@ -7,9 +7,9 @@ use heapless;
 use jack::*;
 
 use crate::gui::GuiController; // FIXME this should not be in the jack driver
-use crate::midi::{Channel, NoteEvent};
+use crate::midi::{Channel, MidiEvent};
 
-type TransportEventVec = heapless::Vec<(u64, NoteEvent), 16>;
+type TransportEventVec = heapless::Vec<(u64, MidiEvent), 16>;
 
 pub struct JackDriver {
 	ui_in_port: Port<MidiIn>,
@@ -24,22 +24,21 @@ pub struct JackDriver {
 
 pub type RawMidiEvent = heapless::Vec<u8, 3>;
 
-pub struct TimestampedNoteEvent {
-	// FIXME misnomer
+pub struct TimestampedMidiEvent {
 	time: u32,
-	event: NoteEvent
+	event: MidiEvent
 }
 
-pub struct TimeStampedRawMidiEvent {
+pub struct TimestampedRawMidiEvent {
 	time: u32,
 	event: RawMidiEvent
 }
 
 pub trait DriverFrame {
-	type EventIterator: Iterator<Item = TimestampedNoteEvent>;
-	type RawMidiIterator: Iterator<Item = TimeStampedRawMidiEvent>;
+	type EventIterator: Iterator<Item = TimestampedMidiEvent>;
+	type RawMidiIterator: Iterator<Item = TimestampedRawMidiEvent>;
 
-	fn send_event(&mut self, port_number: usize, time: u32, event: NoteEvent) -> Result<(), ()>;
+	fn send_event(&mut self, port_number: usize, time: u32, event: MidiEvent) -> Result<(), ()>;
 	fn read_events(&self, port_number: usize) -> Self::EventIterator;
 	fn send_ui_event(&mut self, time: u32, event: &[u8]) -> Result<(), ()>;
 	fn read_ui_events(&self) -> Self::RawMidiIterator;
@@ -141,11 +140,11 @@ impl JackDriver {
 		struct MyRawMidiIterator<'a>(jack::MidiIter<'a>);
 
 		impl<'a> Iterator for MyRawMidiIterator<'a> {
-			type Item = TimeStampedRawMidiEvent;
+			type Item = TimestampedRawMidiEvent;
 			fn next(&mut self) -> Option<Self::Item> {
 				use std::convert::TryInto;
 				self.0.find_map(|ev| {
-					ev.bytes.try_into().ok().map(|vec| TimeStampedRawMidiEvent {
+					ev.bytes.try_into().ok().map(|vec| TimestampedRawMidiEvent {
 						time: ev.time,
 						event: vec
 					})
@@ -156,14 +155,14 @@ impl JackDriver {
 		struct MyEventIterator<'a>(jack::MidiIter<'a>);
 
 		impl<'a> Iterator for MyEventIterator<'a> {
-			type Item = TimestampedNoteEvent;
+			type Item = TimestampedMidiEvent;
 			fn next(&mut self) -> Option<Self::Item> {
 				self.0.find_map(|ev| {
-					NoteEvent::parse(ev.bytes).map(|event| TimestampedNoteEvent {
+					MidiEvent::parse(ev.bytes).map(|event| TimestampedMidiEvent {
 						time: ev.time,
 						event
 					})
-				}) // FIXME
+				})
 			}
 		}
 
@@ -191,7 +190,7 @@ impl JackDriver {
 				&mut self,
 				port_number: usize,
 				time: u32,
-				event: NoteEvent
+				event: MidiEvent
 			) -> Result<(), ()> {
 				self.arp_writers[port_number]
 					.write(&jack::RawMidi {
@@ -318,7 +317,7 @@ impl MidiDriver {
 		let mut transport_events = TransportEventVec::new();
 
 		if self.restart_transport_pending {
-			transport_events.push((self.time, NoteEvent::Start)).ok();
+			transport_events.push((self.time, MidiEvent::Start)).ok();
 			self.restart_transport_pending = false;
 		}
 
@@ -326,15 +325,15 @@ impl MidiDriver {
 			let timestamp = self.time + event.time as u64;
 
 			match event.event {
-				NoteEvent::Clock => {
+				MidiEvent::Clock => {
 					self.last_midiclock_received = self.time;
 
 					if use_external_clock {
-						transport_events.push((timestamp, NoteEvent::Clock)).ok();
+						transport_events.push((timestamp, MidiEvent::Clock)).ok();
 					}
 				}
-				NoteEvent::Start => {
-					transport_events.push((timestamp, NoteEvent::Start)).ok();
+				MidiEvent::Start => {
+					transport_events.push((timestamp, MidiEvent::Start)).ok();
 				}
 				_ => ()
 			}
@@ -345,7 +344,7 @@ impl MidiDriver {
 
 			while self.next_midiclock_to_send < self.time + frame.len() as u64 {
 				transport_events
-					.push((self.next_midiclock_to_send, NoteEvent::Clock))
+					.push((self.next_midiclock_to_send, MidiEvent::Clock))
 					.ok();
 				self.next_midiclock_to_send += self.time_between_midiclocks;
 			}
@@ -363,7 +362,7 @@ impl MidiDriver {
 	) {
 		for (timestamp, event) in transport_events.iter() {
 			match event {
-				NoteEvent::Clock => {
+				MidiEvent::Clock => {
 					frame
 						.send_ui_event((timestamp - self.time) as u32, &[0xF8])
 						.ok();
@@ -447,12 +446,12 @@ impl MidiDriver {
 				let timestamp = self.time + event.time as u64;
 
 				match event.event {
-					NoteEvent::NoteOn(note, _velocity, channel) => {
+					MidiEvent::NoteOn(note, _velocity, channel) => {
 						if channel == self.in_channel {
 							instance.arp.note_on(note, timestamp)
 						}
 					}
-					NoteEvent::NoteOff(note, channel) => {
+					MidiEvent::NoteOff(note, channel) => {
 						if channel == self.in_channel {
 							instance.arp.note_off(note, timestamp)
 						}
@@ -467,10 +466,10 @@ impl MidiDriver {
 					.add_pending_event(*timestamp, *event)
 					.expect("Failed to write tick event");
 				match event {
-					NoteEvent::Clock => {
+					MidiEvent::Clock => {
 						instance.tick_clock(*timestamp);
 					}
-					NoteEvent::Start => {
+					MidiEvent::Start => {
 						instance.restart_transport();
 					}
 					_ => ()
@@ -501,10 +500,10 @@ impl MidiDriver {
 						let other_context = &mut instance_tail[j - (i + 1)];
 						if routing_matrix[i][j] {
 							match event.1 {
-								NoteEvent::NoteOn(note, _, _) => {
+								MidiEvent::NoteOn(note, _, _) => {
 									other_context.arp.note_on(note, event.0);
 								}
-								NoteEvent::NoteOff(note, _) => {
+								MidiEvent::NoteOff(note, _) => {
 									other_context.arp.note_off(note, event.0);
 								}
 								_ => ()
