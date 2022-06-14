@@ -3,6 +3,8 @@
 use crate::midi::MidiEvent;
 use heapless;
 
+pub mod jack;
+
 pub type RawMidiEvent = heapless::Vec<u8, 3>;
 
 pub struct TimestampedMidiEvent {

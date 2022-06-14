@@ -19,11 +19,10 @@ mod arpeggiator;
 mod driver;
 mod grid_controllers;
 mod gui;
-mod jack_driver;
 mod midi;
 mod tempo_detector;
 
-use jack_driver::JackDriver;
+use driver::jack::JackDriver;
 
 use jack;
 use jack::{Control, ProcessScope};
