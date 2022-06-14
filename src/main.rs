@@ -14,7 +14,9 @@
    along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
+mod application;
 mod arpeggiator;
+mod driver;
 mod grid_controllers;
 mod gui;
 mod jack_driver;

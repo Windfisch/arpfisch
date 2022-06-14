@@ -1,6 +1,6 @@
 // this file is part of arpfisch. For copyright and licensing details, see main.rs
 
-use crate::midi::{Channel, Note, MidiEvent};
+use crate::midi::{Channel, MidiEvent, Note};
 use crate::tempo_detector::TempoDetector;
 use heapless;
 
