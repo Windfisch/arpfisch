@@ -71,7 +71,9 @@ impl ArpApplication {
 		}
 	}
 
-	pub fn process_ui_input(&mut self, use_external_clock: bool, frame: &mut impl DriverFrame) {
+	pub fn n_arps(&self) -> usize { self.arp_instances.len() }
+
+	fn process_ui_input(&mut self, use_external_clock: bool, frame: &mut impl DriverFrame) {
 		// FIXME magic (huge) constant
 		let mut active_patterns: heapless::Vec<usize, 64> = self
 			.arp_instances
@@ -130,7 +132,7 @@ impl ArpApplication {
 		}
 	}
 
-	pub fn process_clocks(
+	fn process_clocks(
 		&mut self,
 		use_external_clock: bool,
 		frame: &mut impl DriverFrame
@@ -174,7 +176,7 @@ impl ArpApplication {
 		transport_events
 	}
 
-	pub fn process_ui_output(
+	fn process_ui_output(
 		&mut self,
 		transport_events: &TransportEventVec,
 		use_external_clock: bool,

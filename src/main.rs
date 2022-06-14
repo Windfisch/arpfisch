@@ -22,31 +22,7 @@ mod gui;
 mod midi;
 mod tempo_detector;
 
+use application::ArpApplication;
 use driver::jack::JackDriver;
 
-use jack;
-use jack::{Control, ProcessScope};
-
-fn main() {
-	let client = jack::Client::new("arpfisch", jack::ClientOptions::NO_START_SERVER)
-		.expect("Failed to connect to JACK")
-		.0;
-
-	let mut jack_driver = JackDriver::new("fnord", 4, &client).unwrap();
-
-	let _async_client = client
-		.activate_async(
-			(),
-			jack::ClosureProcessHandler::new(
-				move |client: &jack::Client, scope: &ProcessScope| -> Control {
-					jack_driver.process(client, scope);
-					return Control::Continue;
-				}
-			)
-		)
-		.expect("Failed to activate client");
-
-	loop {
-		std::thread::sleep(std::time::Duration::from_secs(1));
-	}
-}
+fn main() { JackDriver::run("arpfisch", ArpApplication::new(4)); }

@@ -13,18 +13,42 @@ pub struct JackDriver {
 	arp_in_ports: Vec<Port<MidiIn>>,
 	arp_out_ports: Vec<Port<MidiOut>>,
 
-	midi_driver: ArpApplication
+	application: ArpApplication
 }
 
 impl JackDriver {
-	pub fn new(
+	pub fn run(name: &str, application: ArpApplication) {
+		let client = jack::Client::new(name, jack::ClientOptions::NO_START_SERVER)
+			.expect("Failed to connect to JACK")
+			.0;
+
+		let mut jack_driver = JackDriver::new_with_client(name, application, &client).unwrap();
+
+		let _async_client = client
+			.activate_async(
+				(),
+				jack::ClosureProcessHandler::new(
+					move |client: &jack::Client, scope: &ProcessScope| -> Control {
+						jack_driver.process(client, scope);
+						return Control::Continue;
+					}
+				)
+			)
+			.expect("Failed to activate client");
+
+		loop {
+			std::thread::sleep(std::time::Duration::from_secs(1));
+		}
+	}
+
+	pub fn new_with_client(
 		name: &str,
-		n_arps: usize,
+		application: ArpApplication,
 		client: &jack::Client
 	) -> Result<JackDriver, jack::Error> {
 		let mut arp_in_ports = Vec::new();
 		let mut arp_out_ports = Vec::new();
-		for i in 0..n_arps {
+		for i in 0..application.n_arps() {
 			arp_in_ports.push(client.register_port(&format!("{}_{}_in", name, i), MidiIn)?);
 			arp_out_ports.push(client.register_port(&format!("{}_{}_out", name, i), MidiOut)?);
 		}
@@ -35,13 +59,13 @@ impl JackDriver {
 			arp_in_ports,
 			arp_out_ports,
 			periods: 0,
-			midi_driver: ArpApplication::new(n_arps)
+			application
 		};
 
 		Ok(driver)
 	}
 
-	pub fn autoconnect(&self, client: &jack::Client) {
+	fn autoconnect(&self, client: &jack::Client) {
 		for p in client.ports(
 			Some(".*playback.*Launchpad X (LPX MIDI In|MIDI 2)"),
 			None,
@@ -62,7 +86,7 @@ impl JackDriver {
 		}
 	}
 
-	pub fn process(&mut self, client: &jack::Client, scope: &ProcessScope) {
+	fn process(&mut self, client: &jack::Client, scope: &ProcessScope) {
 		struct MyDriverFrame<'a> {
 			arp_writers: Vec<jack::MidiWriter<'a>>,
 			arp_inputs: &'a [Port<MidiIn>],
@@ -151,7 +175,7 @@ impl JackDriver {
 			ui_just_connected: self.periods == 10
 		};
 
-		self.midi_driver.process(&mut frame);
+		self.application.process(&mut frame);
 
 		if self.periods == 0 {
 			self.autoconnect(client);
