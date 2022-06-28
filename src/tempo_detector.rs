@@ -1,5 +1,6 @@
 // this file is part of arpfisch. For copyright and licensing details, see main.rs
 
+#[derive(Clone)]
 pub struct TempoDetector {
 	last_timestamp: Option<u64>,
 	time_per_beat: u32

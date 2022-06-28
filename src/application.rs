@@ -5,9 +5,10 @@ use crate::driver::DriverFrame;
 use crate::grid_controllers::launchpad_x::LaunchpadX;
 use crate::grid_controllers::GridController;
 use heapless;
-
+use serde::{Serialize, Deserialize};
 use crate::gui::GuiController;
 use crate::midi::{Channel, MidiEvent};
+
 
 fn check_routing_matrix(matrix: &Vec<Vec<bool>>) -> bool {
 	assert!(
@@ -26,68 +27,92 @@ fn check_routing_matrix(matrix: &Vec<Vec<bool>>) -> bool {
 
 type TransportEventVec = heapless::Vec<(u64, MidiEvent), 16>;
 
+impl std::io::Write for &mut SaveBuffer {
+	fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+		self.0.extend_from_slice(buf).map_err(|_| std::io::Error::new(std::io::ErrorKind::OutOfMemory, "SaveBuffer exceeded."))?;
+		Ok(buf.len())
+	}
+	fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+}
+
+pub struct SaveBuffer(pub heapless::Vec<u8, 1048576>); // 1 MiB should be *definitely* enough...
+
 pub struct ArpApplication {
 	ui: LaunchpadX,
 	gui_controller: GuiController,
 
 	time: u64,
-	in_channel: Channel,
-	out_channel: Channel,
 	last_midiclock_received: u64,
 	next_midiclock_to_send: u64,
+	old_routing_matrix: Vec<Vec<bool>>,
+	restart_transport_pending: bool,
+
+	save_buffer_receive: ringbuf::Consumer<Box<SaveBuffer>>,
+	save_buffer_return: ringbuf::Producer<Box<SaveBuffer>>,
+
+	pub serializable: ArpApplicationSerializable
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ArpApplicationSerializable {
+	in_channel: Channel,
+	out_channel: Channel,
+
 	time_between_midiclocks: u64,
 	clock_mode: ClockMode,
 
-	restart_transport_pending: bool,
-
 	routing_matrix: Vec<Vec<bool>>,
-	old_routing_matrix: Vec<Vec<bool>>,
 	active_arp: usize,
+
 	arp_instances: Vec<ArpeggiatorInstance>
 }
 
 impl ArpApplication {
-	pub fn new(n_arps: usize) -> ArpApplication {
+	pub fn new(n_arps: usize, save_buffer_receive: ringbuf::Consumer<Box<SaveBuffer>>, save_buffer_return: ringbuf::Producer<Box<SaveBuffer>>) -> ArpApplication {
 		let mut arp_instances = Vec::new();
 		for _ in 0..n_arps {
 			arp_instances.push(ArpeggiatorInstance::new());
 		}
 
 		ArpApplication {
-			active_arp: 0,
 			time: 0,
 			restart_transport_pending: false,
-			in_channel: Channel(0),
-			out_channel: Channel(0),
 			last_midiclock_received: 0,
 			next_midiclock_to_send: 0,
-			time_between_midiclocks: 24000 / 24,
-			clock_mode: ClockMode::Auto,
-			arp_instances,
-			routing_matrix: vec![vec![false; n_arps]; n_arps],
+			serializable: ArpApplicationSerializable {
+				time_between_midiclocks: 24000 / 24,
+				clock_mode: ClockMode::Auto,
+				arp_instances,
+				routing_matrix: vec![vec![false; n_arps]; n_arps],
+				active_arp: 0,
+				in_channel: Channel(0),
+				out_channel: Channel(0),
+			},
 			old_routing_matrix: vec![vec![false; n_arps]; n_arps],
 			ui: LaunchpadX::new(),
-			gui_controller: GuiController::new()
+			gui_controller: GuiController::new(),
+			save_buffer_receive,
+			save_buffer_return
 		}
 	}
 
-	pub fn n_arps(&self) -> usize { self.arp_instances.len() }
+	pub fn n_arps(&self) -> usize { self.serializable.arp_instances.len() }
 
 	fn process_ui_input(&mut self, use_external_clock: bool, frame: &mut impl DriverFrame) {
 		// FIXME magic (huge) constant
 		let mut active_patterns: heapless::Vec<usize, 64> = self
-			.arp_instances
+			.serializable.arp_instances
 			.iter()
 			.map(|instance| instance.active_pattern)
 			.collect();
 
 		let gui_controller = &mut self.gui_controller;
-		let time_between_midiclocks = &mut self.time_between_midiclocks;
-		let clock_mode = &mut self.clock_mode;
+		let time_between_midiclocks = &mut self.serializable.time_between_midiclocks;
+		let clock_mode = &mut self.serializable.clock_mode;
 		let time = self.time;
-		let arp_instance = &mut self.arp_instances[self.active_arp];
-		let active_arp = &mut self.active_arp;
-		let routing_matrix = &mut self.routing_matrix;
+		let arp_instance = &mut self.serializable.arp_instances[self.serializable.active_arp];
+		let active_arp = &mut self.serializable.active_arp;
+		let routing_matrix = &mut self.serializable.routing_matrix;
 		let restart_transport_pending = &mut self.restart_transport_pending;
 
 		for ev in frame.read_ui_events() {
@@ -126,7 +151,7 @@ impl ArpApplication {
 			});
 		}
 
-		for (active_pattern, instance) in active_patterns.iter().zip(self.arp_instances.iter_mut())
+		for (active_pattern, instance) in active_patterns.iter().zip(self.serializable.arp_instances.iter_mut())
 		{
 			instance.active_pattern = *active_pattern;
 		}
@@ -169,7 +194,7 @@ impl ArpApplication {
 				transport_events
 					.push((self.next_midiclock_to_send, MidiEvent::Clock))
 					.ok();
-				self.next_midiclock_to_send += self.time_between_midiclocks;
+				self.next_midiclock_to_send += self.serializable.time_between_midiclocks;
 			}
 		}
 
@@ -197,19 +222,19 @@ impl ArpApplication {
 		let ui = &mut self.ui;
 		// FIXME magic (huge) constant
 		let active_patterns: heapless::Vec<usize, 64> = self
-			.arp_instances
+			.serializable.arp_instances
 			.iter()
 			.map(|instance| instance.active_pattern)
 			.collect();
-		let arp_instance = &mut self.arp_instances[self.active_arp];
+		let arp_instance = &mut self.serializable.arp_instances[self.serializable.active_arp];
 		self.gui_controller.draw(
 			&arp_instance.patterns[arp_instance.active_pattern],
 			&active_patterns,
-			self.active_arp,
+			self.serializable.active_arp,
 			arp_instance.currently_playing_tick(),
 			use_external_clock,
 			external_clock_present,
-			self.clock_mode,
+			self.serializable.clock_mode,
 			arp_instance.ticks_per_step,
 			arp_instance.arp.chord_hold,
 			&arp_instance.arp.scale,
@@ -223,7 +248,7 @@ impl ArpApplication {
 				None,
 				Some((arp_instance.arp.intensity_velocity_amount, 0.0..=2.0))
 			],
-			&self.routing_matrix,
+			&self.serializable.routing_matrix,
 			self.time,
 			|pos, color| {
 				ui.set(pos, color, |bytes| {
@@ -234,6 +259,10 @@ impl ArpApplication {
 	}
 
 	pub fn process(&mut self, frame: &mut impl DriverFrame) {
+		assert_no_alloc::assert_no_alloc(|| self.process_all(frame))
+	}
+
+	fn process_all(&mut self, frame: &mut impl DriverFrame) {
 		if frame.ui_just_connected() {
 			self.ui.init(|bytes| {
 				frame
@@ -243,7 +272,7 @@ impl ArpApplication {
 		}
 
 		let external_clock_present = self.time - self.last_midiclock_received <= 48000;
-		let use_external_clock = match self.clock_mode {
+		let use_external_clock = match self.serializable.clock_mode {
 			ClockMode::Internal => false,
 			ClockMode::External => true,
 			ClockMode::Auto => external_clock_present
@@ -259,10 +288,10 @@ impl ArpApplication {
 			frame
 		);
 
-		let n_instances = self.arp_instances.len();
+		let n_instances = self.serializable.arp_instances.len();
 		// TODO FIXME clean this up
 		for i in 0..n_instances {
-			let (instance, instance_tail) = self.arp_instances[i..].split_first_mut().unwrap();
+			let (instance, instance_tail) = self.serializable.arp_instances[i..].split_first_mut().unwrap();
 
 			// input
 			for event in frame.read_events(i) {
@@ -270,12 +299,12 @@ impl ArpApplication {
 
 				match event.event {
 					MidiEvent::NoteOn(note, _velocity, channel) => {
-						if channel == self.in_channel {
+						if channel == self.serializable.in_channel {
 							instance.arp.note_on(note, timestamp)
 						}
 					}
 					MidiEvent::NoteOff(note, channel) => {
-						if channel == self.in_channel {
+						if channel == self.serializable.in_channel {
 							instance.arp.note_off(note, timestamp)
 						}
 					}
@@ -301,8 +330,8 @@ impl ArpApplication {
 
 			// output
 			let time = self.time;
-			let out_channel = self.out_channel;
-			let routing_matrix = &self.routing_matrix;
+			let out_channel = self.serializable.out_channel;
+			let routing_matrix = &self.serializable.routing_matrix;
 			let old_routing_matrix = &mut self.old_routing_matrix;
 			assert!(check_routing_matrix(routing_matrix));
 
@@ -346,5 +375,10 @@ impl ArpApplication {
 		}
 
 		self.time += frame.len() as u64;
+
+		if let Some(mut buffer) = self.save_buffer_receive.pop() {
+			serde_json::to_writer_pretty(buffer.as_mut(), &self.serializable).ok();
+			self.save_buffer_return.push(buffer).map_err(|_|()).unwrap();
+		}
 	}
 }

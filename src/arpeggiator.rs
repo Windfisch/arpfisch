@@ -1,10 +1,11 @@
 // this file is part of arpfisch. For copyright and licensing details, see main.rs
 
+use serde::{Serialize, Deserialize};
 use crate::midi::{Channel, MidiEvent, Note};
 use crate::tempo_detector::TempoDetector;
 use heapless;
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RepeatMode {
 	Clamp,
 	Repeat(i32),
@@ -61,7 +62,7 @@ impl RepeatMode {
 	}
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Entry {
 	pub note: isize,
 	pub len_steps: u32,
@@ -82,7 +83,7 @@ impl Entry {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ArpeggioData {
 	pub repeat_mode: RepeatMode,
 	pub pattern: heapless::Vec<heapless::Vec<Entry, 16>, 64>
@@ -123,6 +124,7 @@ impl ArpeggioData {
 	}
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Arpeggiator {
 	pub global_length_modifier: f32,
 	pub global_velocity: f32,
@@ -130,17 +132,23 @@ pub struct Arpeggiator {
 	pub intensity_velocity_amount: f32,
 	pub chord_settle_time: u64,
 	pub chord_hold: bool,
-	chord_hold_old: bool, // FIXME this should really not be there... use a setter instead
-	chord: heapless::Vec<Note, 16>,
-	stable_chord: heapless::Vec<Note, 16>,
-	chord_next_update_time: Option<u64>,
-	step: usize,
 	pub scale: heapless::Vec<Note, 16>,
 	pub scale_base_override: Option<Note>,
+	stable_chord: heapless::Vec<Note, 16>,
+
+	#[serde(skip)]
+	chord_hold_old: bool, // FIXME this should really not be there... use a setter instead
+	#[serde(skip)]
+	chord: heapless::Vec<Note, 16>,
+	#[serde(skip)]
+	chord_next_update_time: Option<u64>,
+	#[serde(skip)]
+	step: usize,
+	#[serde(skip)]
 	scale_base_override_old: Option<Note> // meeeeh FIXME
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub enum ClockMode {
 	Internal,
 	External,
@@ -283,13 +291,18 @@ impl Arpeggiator {
 	pub fn step(&self) -> usize { self.step }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
 pub struct ArpeggiatorInstance {
 	pub ticks_per_step: u32,
-	tick_counter: u32,
 	pub patterns: [ArpeggioData; 8],
 	pub active_pattern: usize,
 	pub arp: Arpeggiator,
+
+	#[serde(skip)]
+	tick_counter: u32,
+	#[serde(skip, default = "TempoDetector::new")]
 	tempo: TempoDetector,
+	#[serde(skip)]
 	pending_events: heapless::Vec<(u64, MidiEvent), 32>
 }
 
