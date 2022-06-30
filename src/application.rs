@@ -51,11 +51,11 @@ pub struct ArpApplication {
 	save_buffer_receive: ringbuf::Consumer<Box<SaveBuffer>>,
 	save_buffer_return: ringbuf::Producer<Box<SaveBuffer>>,
 
-	pub serializable: ArpApplicationSerializable
+	serializable: ArpApplicationSerializable
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct ArpApplicationSerializable {
+struct ArpApplicationSerializable {
 	in_channel: Channel,
 	out_channel: Channel,
 
@@ -69,6 +69,34 @@ pub struct ArpApplicationSerializable {
 }
 
 impl ArpApplication {
+	pub fn from_reader(
+		reader: impl std::io::Read,
+		save_buffer_receive: ringbuf::Consumer<Box<SaveBuffer>>,
+		save_buffer_return: ringbuf::Producer<Box<SaveBuffer>>
+	) -> anyhow::Result<ArpApplication> {
+		let serializable: ArpApplicationSerializable = serde_json::from_reader(reader)?;
+		let n_arps = serializable.arp_instances.len();
+		if n_arps <= 0 {
+			anyhow::bail!("Illegal number of arpeggiators");
+		}
+		if serializable.routing_matrix.len() != n_arps || serializable.routing_matrix[0].len() != n_arps {
+			anyhow::bail!("Routing matrix size must match number of arpeggiators");
+		}
+
+		Ok(ArpApplication {
+			time: 0,
+			restart_transport_pending: false,
+			last_midiclock_received: 0,
+			next_midiclock_to_send: 0,
+			serializable,
+			old_routing_matrix: vec![vec![false; n_arps]; n_arps],
+			ui: LaunchpadX::new(),
+			gui_controller: GuiController::new(),
+			save_buffer_receive,
+			save_buffer_return
+		})
+	}
+
 	pub fn new(
 		n_arps: usize,
 		save_buffer_receive: ringbuf::Consumer<Box<SaveBuffer>>,
