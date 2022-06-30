@@ -4,11 +4,10 @@ use crate::arpeggiator::{ArpeggiatorInstance, ClockMode};
 use crate::driver::DriverFrame;
 use crate::grid_controllers::launchpad_x::LaunchpadX;
 use crate::grid_controllers::GridController;
-use heapless;
-use serde::{Serialize, Deserialize};
 use crate::gui::GuiController;
 use crate::midi::{Channel, MidiEvent};
-
+use heapless;
+use serde::{Deserialize, Serialize};
 
 fn check_routing_matrix(matrix: &Vec<Vec<bool>>) -> bool {
 	assert!(
@@ -29,7 +28,9 @@ type TransportEventVec = heapless::Vec<(u64, MidiEvent), 16>;
 
 impl std::io::Write for &mut SaveBuffer {
 	fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-		self.0.extend_from_slice(buf).map_err(|_| std::io::Error::new(std::io::ErrorKind::OutOfMemory, "SaveBuffer exceeded."))?;
+		self.0.extend_from_slice(buf).map_err(|_| {
+			std::io::Error::new(std::io::ErrorKind::OutOfMemory, "SaveBuffer exceeded.")
+		})?;
 		Ok(buf.len())
 	}
 	fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
@@ -68,7 +69,11 @@ pub struct ArpApplicationSerializable {
 }
 
 impl ArpApplication {
-	pub fn new(n_arps: usize, save_buffer_receive: ringbuf::Consumer<Box<SaveBuffer>>, save_buffer_return: ringbuf::Producer<Box<SaveBuffer>>) -> ArpApplication {
+	pub fn new(
+		n_arps: usize,
+		save_buffer_receive: ringbuf::Consumer<Box<SaveBuffer>>,
+		save_buffer_return: ringbuf::Producer<Box<SaveBuffer>>
+	) -> ArpApplication {
 		let mut arp_instances = Vec::new();
 		for _ in 0..n_arps {
 			arp_instances.push(ArpeggiatorInstance::new());
@@ -86,7 +91,7 @@ impl ArpApplication {
 				routing_matrix: vec![vec![false; n_arps]; n_arps],
 				active_arp: 0,
 				in_channel: Channel(0),
-				out_channel: Channel(0),
+				out_channel: Channel(0)
 			},
 			old_routing_matrix: vec![vec![false; n_arps]; n_arps],
 			ui: LaunchpadX::new(),
@@ -101,7 +106,8 @@ impl ArpApplication {
 	fn process_ui_input(&mut self, use_external_clock: bool, frame: &mut impl DriverFrame) {
 		// FIXME magic (huge) constant
 		let mut active_patterns: heapless::Vec<usize, 64> = self
-			.serializable.arp_instances
+			.serializable
+			.arp_instances
 			.iter()
 			.map(|instance| instance.active_pattern)
 			.collect();
@@ -151,7 +157,9 @@ impl ArpApplication {
 			});
 		}
 
-		for (active_pattern, instance) in active_patterns.iter().zip(self.serializable.arp_instances.iter_mut())
+		for (active_pattern, instance) in active_patterns
+			.iter()
+			.zip(self.serializable.arp_instances.iter_mut())
 		{
 			instance.active_pattern = *active_pattern;
 		}
@@ -222,7 +230,8 @@ impl ArpApplication {
 		let ui = &mut self.ui;
 		// FIXME magic (huge) constant
 		let active_patterns: heapless::Vec<usize, 64> = self
-			.serializable.arp_instances
+			.serializable
+			.arp_instances
 			.iter()
 			.map(|instance| instance.active_pattern)
 			.collect();
@@ -291,7 +300,9 @@ impl ArpApplication {
 		let n_instances = self.serializable.arp_instances.len();
 		// TODO FIXME clean this up
 		for i in 0..n_instances {
-			let (instance, instance_tail) = self.serializable.arp_instances[i..].split_first_mut().unwrap();
+			let (instance, instance_tail) = self.serializable.arp_instances[i..]
+				.split_first_mut()
+				.unwrap();
 
 			// input
 			for event in frame.read_events(i) {
@@ -378,7 +389,10 @@ impl ArpApplication {
 
 		if let Some(mut buffer) = self.save_buffer_receive.pop() {
 			serde_json::to_writer_pretty(buffer.as_mut(), &self.serializable).ok();
-			self.save_buffer_return.push(buffer).map_err(|_|()).unwrap();
+			self.save_buffer_return
+				.push(buffer)
+				.map_err(|_| ())
+				.unwrap();
 		}
 	}
 }

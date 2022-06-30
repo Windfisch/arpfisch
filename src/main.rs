@@ -24,9 +24,8 @@ mod tempo_detector;
 
 use application::ArpApplication;
 use driver::jack::JackDriver;
-use std::thread;
 use std::io::Write;
-
+use std::thread;
 
 use assert_no_alloc::AllocDisabler;
 #[cfg(debug_assertions)] // required when disable_release is set (default)
@@ -49,23 +48,30 @@ fn main() {
 	let (mut save_send_producer, save_send_consumer) = ringbuf::RingBuffer::new(1).split();
 	let (save_return_producer, mut save_return_consumer) = ringbuf::RingBuffer::new(1).split();
 
-	save_send_producer.push(save_buffer).map_err(|_|()).unwrap();
+	save_send_producer
+		.push(save_buffer)
+		.map_err(|_| ())
+		.unwrap();
 
 	let filename = Path::new("/tmp/bla.json");
 
-	thread::spawn(move || {
-		loop {
-			if let Some(buffer) = save_return_consumer.pop() {
-				let mut buffer: Box<application::SaveBuffer> = buffer;
-				let mut file = std::fs::File::create(temp_name(&filename)).expect("Failed to open temporary savefile");
-				file.write_all(&buffer.0).expect("Failed to write to temporary savefile");
-				std::fs::rename(temp_name(&filename), &filename).expect("Failed to rename temporary savefile to real one");
-				buffer.0.clear();
-				save_send_producer.push(buffer).map_err(|_|()).unwrap();
-			}
-			thread::sleep(std::time::Duration::from_secs(1));
+	thread::spawn(move || loop {
+		if let Some(buffer) = save_return_consumer.pop() {
+			let mut buffer: Box<application::SaveBuffer> = buffer;
+			let mut file = std::fs::File::create(temp_name(&filename))
+				.expect("Failed to open temporary savefile");
+			file.write_all(&buffer.0)
+				.expect("Failed to write to temporary savefile");
+			std::fs::rename(temp_name(&filename), &filename)
+				.expect("Failed to rename temporary savefile to real one");
+			buffer.0.clear();
+			save_send_producer.push(buffer).map_err(|_| ()).unwrap();
 		}
+		thread::sleep(std::time::Duration::from_secs(1));
 	});
 
-	JackDriver::run("arpfisch", ArpApplication::new(4, save_send_consumer, save_return_producer));
+	JackDriver::run(
+		"arpfisch",
+		ArpApplication::new(4, save_send_consumer, save_return_producer)
+	);
 }

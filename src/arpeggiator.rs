@@ -1,9 +1,9 @@
 // this file is part of arpfisch. For copyright and licensing details, see main.rs
 
-use serde::{Serialize, Deserialize};
 use crate::midi::{Channel, MidiEvent, Note};
 use crate::tempo_detector::TempoDetector;
 use heapless;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RepeatMode {
