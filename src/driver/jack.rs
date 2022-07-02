@@ -13,11 +13,11 @@ pub struct JackDriver {
 	arp_in_ports: Vec<Port<MidiIn>>,
 	arp_out_ports: Vec<Port<MidiOut>>,
 
-	application: ArpApplication
+	application: Box<ArpApplication>
 }
 
 impl JackDriver {
-	pub fn run(name: &str, application: ArpApplication) {
+	pub fn run(name: &str, application: Box<ArpApplication>) {
 		let client = jack::Client::new(name, jack::ClientOptions::NO_START_SERVER)
 			.expect("Failed to connect to JACK")
 			.0;
@@ -43,7 +43,7 @@ impl JackDriver {
 
 	pub fn new_with_client(
 		name: &str,
-		application: ArpApplication,
+		application: Box<ArpApplication>,
 		client: &jack::Client
 	) -> Result<JackDriver, jack::Error> {
 		let mut arp_in_ports = Vec::new();

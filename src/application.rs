@@ -73,8 +73,8 @@ impl ArpApplication {
 		reader: impl std::io::Read,
 		save_buffer_receive: ringbuf::Consumer<Box<SaveBuffer>>,
 		save_buffer_return: ringbuf::Producer<Box<SaveBuffer>>
-	) -> anyhow::Result<ArpApplication> {
-		let serializable: ArpApplicationSerializable = serde_json::from_reader(reader)?;
+	) -> anyhow::Result<Box<ArpApplication>> {
+		let serializable: Box<ArpApplicationSerializable> = Box::new(serde_json::from_reader(reader)?);
 		let n_arps = serializable.arp_instances.len();
 		if n_arps <= 0 {
 			anyhow::bail!("Illegal number of arpeggiators");
@@ -83,31 +83,31 @@ impl ArpApplication {
 			anyhow::bail!("Routing matrix size must match number of arpeggiators");
 		}
 
-		Ok(ArpApplication {
+		Ok(Box::new(ArpApplication {
 			time: 0,
 			restart_transport_pending: false,
 			last_midiclock_received: 0,
 			next_midiclock_to_send: 0,
-			serializable,
+			serializable: *serializable,
 			old_routing_matrix: vec![vec![false; n_arps]; n_arps],
 			ui: LaunchpadX::new(),
 			gui_controller: GuiController::new(),
 			save_buffer_receive,
 			save_buffer_return
-		})
+		}))
 	}
 
 	pub fn new(
 		n_arps: usize,
 		save_buffer_receive: ringbuf::Consumer<Box<SaveBuffer>>,
 		save_buffer_return: ringbuf::Producer<Box<SaveBuffer>>
-	) -> ArpApplication {
+	) -> Box<ArpApplication> {
 		let mut arp_instances = Vec::new();
 		for _ in 0..n_arps {
 			arp_instances.push(ArpeggiatorInstance::new());
 		}
 
-		ArpApplication {
+		Box::new(ArpApplication {
 			time: 0,
 			restart_transport_pending: false,
 			last_midiclock_received: 0,
@@ -126,7 +126,7 @@ impl ArpApplication {
 			gui_controller: GuiController::new(),
 			save_buffer_receive,
 			save_buffer_return
-		}
+		})
 	}
 
 	pub fn n_arps(&self) -> usize { self.serializable.arp_instances.len() }
